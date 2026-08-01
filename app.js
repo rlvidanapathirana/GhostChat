@@ -90,10 +90,13 @@ function startPeer() {
 function setupConn(conn) {
     conn.on('open', () => {
         connections[conn.peer] = conn;
-        if (!currentPeerId) openChat(conn.peer);
+        // Always open chat for this peer when connection opens
+        openChat(conn.peer);
         conn.send({ type:'profile-sync', profile:myProfile });
         sysMsg(`${conn.peer} connected`);
-        if (isHost) broadcast({ type:'system', content:`${conn.peer} joined` }, conn.peer);
+        if (isHost && Object.keys(connections).length > 1) {
+            broadcast({ type:'system', content:`${conn.peer} joined` }, conn.peer);
+        }
     });
     conn.on('data', d => handleData(d, conn.peer));
     conn.on('close', () => {
@@ -106,19 +109,30 @@ function setupConn(conn) {
         updateContactStatus(conn.peer, false);
         renderChatList();
     });
+    conn.on('error', err => {
+        console.warn('Connection error:', err);
+        sysMsg('Connection failed. Try again.');
+    });
 }
 
 // ─── New Chat ───
 $('new-chat-fab').onclick = () => show('newchat-modal');
 $('close-newchat-modal').onclick = () => hide('newchat-modal');
 $('newchat-connect-btn').onclick = () => {
-    const id = $('newchat-peer-input').value.trim().toLowerCase();
+    const id = $('newchat-peer-input').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
     if (!id || id === myProfile.customId) { showErr('newchat-err','Invalid username.'); return; }
-    isHost = false;
-    const conn = peer.connect(id, { reliable:true });
-    setupConn(conn);
     hide('newchat-modal');
     $('newchat-peer-input').value = '';
+    // If already connected, just open chat
+    if (connections[id]?.open) {
+        openChat(id);
+        return;
+    }
+    isHost = false;
+    // Show chat immediately with 'Connecting...' status
+    openChat(id);
+    const conn = peer.connect(id, { reliable:true });
+    setupConn(conn);
 };
 
 // ─── Data Handler ───
@@ -283,13 +297,14 @@ function renderChatList() {
                 </div>
             </div>`;
         li.onclick = () => {
-            // Try to connect if not connected
+            // Always open the chat screen first
+            openChat(peerId);
+            // If not connected, try to connect in background
             if (!connections[peerId]?.open) {
                 const conn = peer.connect(peerId, { reliable:true });
                 isHost = false;
                 setupConn(conn);
             }
-            openChat(peerId);
         };
         list.appendChild(li);
     });
