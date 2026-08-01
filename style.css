@@ -149,21 +149,24 @@ input, textarea, select { font-family: 'Outfit', sans-serif; }
     transition: transform .3s cubic-bezier(.4,0,.2,1);
     will-change: transform;
     overflow: hidden;
+    /* Use visibility so off-screen elements are truly inert */
+    visibility: visible;
 }
 
-/* Home screen sits on top initially, chat slides in from right */
+/* Home screen visible by default */
 #home-screen  { z-index: 1; transform: translateX(0); }
-#chat-screen  { z-index: 2; transform: translateX(100%); }
-#chat-screen.active { transform: translateX(0); }
+/* Chat screen off-screen to the right by default — NOT display:none, just off-screen */
+#chat-screen  { z-index: 2; transform: translateX(100%); pointer-events: none; }
+#chat-screen.active { transform: translateX(0); pointer-events: auto; }
 #home-screen.pushed  { transform: translateX(-25%); }
 
 /* ── DESKTOP (800px+): side by side ── */
 @media (min-width: 800px) {
     .app-root { flex-direction: row; }
-    .screen { position: relative; transform: none !important; }
+    /* On desktop, screens are side by side — no transform tricks needed */
+    .screen { position: relative; transform: none !important; pointer-events: auto !important; }
     #home-screen { width: 370px; flex-shrink: 0; border-right: 1px solid var(--border); z-index: 1; }
     #chat-screen { flex: 1; z-index: 1; }
-    #home-screen.pushed { transform: none !important; }
     .back-btn { display: none !important; }
 }
 
