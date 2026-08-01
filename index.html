@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GhostChat V5 - Absolute Privacy</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://unpkg.com/localforage@1.10.0/dist/localforage.min.js"></script> <!-- For IndexedDB -->
+</head>
+<body data-theme="green" data-text-size="medium">
+
+    <!-- Audio Elements for Sounds -->
+    <audio id="sound-msg-in" src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" preload="auto"></audio>
+    <audio id="sound-msg-out" src="https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3" preload="auto"></audio>
+    <audio id="sound-ring" src="https://assets.mixkit.co/active_storage/sfx/2803/2803-preview.mp3" loop preload="auto"></audio>
+
+    <!-- Privacy & Terms Modal -->
+    <div class="modal-overlay hidden" id="terms-modal-overlay">
+        <div class="modal-content">
+            <i class="fa-solid fa-shield-halved icon-shield"></i>
+            <h2>GhostChat V5</h2>
+            <p class="highlight-green">100% End-to-End Encrypted & Serverless</p>
+            <div class="legal-text">
+                <p>By proceeding, you confirm that you are of the appropriate age to use chat services.</p>
+                <p class="highlight-danger">Developers have NO LIABILITY for content shared here. We cannot see, intercept, or monitor your chats as there is no central database.</p>
+                <p>Do NOT use this platform for illegal activities.</p>
+            </div>
+            <button class="btn-primary w-100" id="agree-btn">I Agree & Accept Responsibility</button>
+        </div>
+    </div>
+
+    <!-- Profile Setup Modal -->
+    <div class="modal-overlay hidden" id="profile-modal-overlay">
+        <div class="modal-content">
+            <h2>Setup Your Profile</h2>
+            
+            <div class="avatar-setup">
+                <div class="avatar-preview" id="setup-avatar-preview">
+                    <i class="fa-solid fa-camera"></i>
+                </div>
+                <input type="file" id="setup-avatar-input" accept="image/*" hidden>
+            </div>
+
+            <div class="input-group-col">
+                <label>Display Name</label>
+                <input type="text" id="setup-name-input" placeholder="e.g. Kasun" maxlength="20">
+            </div>
+
+            <div class="input-group-col mt-15">
+                <label>Custom Username (Connect ID)</label>
+                <input type="text" id="setup-id-input" placeholder="e.g. kasun2026" maxlength="15">
+                <small>Others will use this to connect to you. No spaces.</small>
+            </div>
+            
+            <p id="setup-error" class="error-msg hidden"></p>
+            <button class="btn-primary w-100 mt-20" id="save-profile-btn">Start Chatting</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay hidden" id="settings-modal-overlay">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Settings</h2>
+                <button class="close-btn" id="close-settings-btn"><i class="fa-solid fa-xmark"></i></button>
+            </header>
+            
+            <div class="settings-list">
+                <div class="setting-item">
+                    <label>Real-time Typing (IMO Style)</label>
+                    <label class="switch">
+                        <input type="checkbox" id="setting-imo-typing">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                
+                <div class="setting-item">
+                    <label>Text Size</label>
+                    <select id="setting-text-size" class="dropdown">
+                        <option value="small">Small</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="large">Large</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <label>Self-Destruct Messages (10s)</label>
+                    <label class="switch">
+                        <input type="checkbox" id="setting-self-destruct">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <label>Custom Wallpaper</label>
+                    <button class="btn-outline" id="btn-wallpaper">Choose Image</button>
+                    <input type="file" id="input-wallpaper" accept="image/*" hidden>
+                </div>
+
+                <button class="btn-outline w-100 mt-15" id="btn-export-chat"><i class="fa-solid fa-download"></i> Export Chat History</button>
+                <button class="btn-danger w-100 mt-15" id="btn-clear-history"><i class="fa-solid fa-trash"></i> Clear 24h History</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Layout -->
+    <div class="app-container">
+        
+        <!-- Sidebar Drawer (Mobile) / Sidebar Panel (Desktop) -->
+        <aside class="sidebar glass-panel" id="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-ghost"></i>
+                <h1>GhostChat</h1>
+                <button class="mobile-close-sidebar hidden" id="mobile-close-sidebar"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="my-profile-section">
+                <div class="profile-card">
+                    <img id="my-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z'/%3E%3C/svg%3E" alt="Avatar">
+                    <div class="info">
+                        <h3 id="my-name">Loading...</h3>
+                        <div class="id-badge">
+                            <span id="my-custom-id">...</span>
+                            <button id="copy-btn" title="Copy Username"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <button class="settings-btn" id="open-settings-btn"><i class="fa-solid fa-gear"></i></button>
+                </div>
+            </div>
+
+            <div class="connect-section">
+                <label>Connect to Peer Username</label>
+                <div class="input-group">
+                    <input type="text" id="peer-id-input" placeholder="e.g. nimal77">
+                    <button id="connect-btn" class="btn-primary">Connect</button>
+                </div>
+                <div id="connection-status" class="status-msg mt-2">Not connected</div>
+            </div>
+
+            <div class="features-info">
+                <div class="feature"><i class="fa-solid fa-lock"></i> Fully Encrypted</div>
+                <div class="feature"><i class="fa-solid fa-users"></i> Group Supported</div>
+                <div class="feature"><i class="fa-solid fa-clock-rotate-left"></i> 24h Auto-Delete</div>
+            </div>
+        </aside>
+
+        <!-- Chat Area -->
+        <main class="chat-area glass-panel" id="chat-area">
+            
+            <header class="chat-header">
+                <div class="peer-info">
+                    <button class="menu-btn hidden" id="menu-btn"><i class="fa-solid fa-bars"></i></button>
+                    <div class="avatar"><i class="fa-solid fa-users"></i></div>
+                    <div class="details">
+                        <h2>GhostChat Room</h2>
+                        <span class="status online" id="room-status">Connected: 0 Peer(s)</span>
+                        <div class="typing-indicator hidden" id="header-typing">kasun is typing...</div>
+                    </div>
+                </div>
+                
+                <div class="chat-actions">
+                    <div class="search-box hidden" id="search-box">
+                        <input type="text" id="search-input" placeholder="Search...">
+                        <button id="close-search-btn"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <button class="action-btn" id="search-btn" title="Search"><i class="fa-solid fa-magnifying-glass"></i></button>
+                    <button class="action-btn" id="audio-call-btn" title="Voice Call"><i class="fa-solid fa-phone"></i></button>
+                    <button class="action-btn" id="video-call-btn" title="Video Call"><i class="fa-solid fa-video"></i></button>
+                    <button class="action-btn text-danger" id="disconnect-btn" title="Disconnect"><i class="fa-solid fa-right-from-bracket"></i></button>
+                </div>
+            </header>
+
+            <div class="messages-container" id="messages-container">
+                <div class="message system">Welcome. Messages are encrypted and deleted after 24h. 🔒</div>
+            </div>
+
+            <!-- Reply Preview Bar -->
+            <div class="reply-preview hidden" id="reply-preview">
+                <div class="reply-content">
+                    <strong id="reply-to-name">Name</strong>
+                    <p id="reply-to-text">Text</p>
+                </div>
+                <button id="close-reply-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <footer class="chat-input-area">
+                <button class="attachment-btn" id="attach-btn" title="Send File"><i class="fa-solid fa-paperclip"></i></button>
+                <input type="file" id="file-input" accept="image/*,video/*" hidden>
+                
+                <div class="input-wrapper">
+                    <div id="live-typing-display" class="hidden"></div>
+                    <textarea id="message-input" placeholder="Type a message..." rows="1"></textarea>
+                </div>
+
+                <!-- Progress Bar for File Uploads -->
+                <div class="upload-progress hidden" id="upload-progress">
+                    <div class="bar" id="upload-bar"></div>
+                </div>
+
+                <!-- Mic / Waveform -->
+                <div class="voice-wrapper">
+                    <canvas id="voice-visualizer" class="hidden"></canvas>
+                    <button class="voice-btn" id="voice-btn" title="Hold to record voice"><i class="fa-solid fa-microphone"></i></button>
+                </div>
+                
+                <button class="send-btn hidden" id="send-btn" title="Send message"><i class="fa-solid fa-paper-plane"></i></button>
+            </footer>
+        </main>
+        
+        <!-- Call Modal -->
+        <div class="call-modal glass-panel hidden" id="call-modal">
+            <h2 id="call-title">Incoming Call...</h2>
+            <p id="call-caller-name">From User</p>
+            <div class="video-container">
+                <video id="remote-video" autoplay playsinline></video>
+                <video id="local-video" autoplay playsinline muted></video>
+            </div>
+            <div class="call-controls">
+                <button class="btn-icon" id="screenshare-btn" title="Share Screen"><i class="fa-solid fa-desktop"></i></button>
+                <button class="btn-danger" id="end-call-btn"><i class="fa-solid fa-phone-slash"></i></button>
+                <button class="btn-success hidden" id="accept-call-btn"><i class="fa-solid fa-phone"></i></button>
+            </div>
+        </div>
+
+        <!-- Emoji Reaction Popup -->
+        <div class="reaction-popup hidden" id="reaction-popup">
+            <span class="emoji" data-emoji="👍">👍</span>
+            <span class="emoji" data-emoji="❤️">❤️</span>
+            <span class="emoji" data-emoji="😂">😂</span>
+            <span class="emoji" data-emoji="😮">😮</span>
+            <span class="emoji" data-emoji="😢">😢</span>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+    <script src="media.js"></script>
+</body>
+</html>
