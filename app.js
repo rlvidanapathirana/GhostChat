@@ -1,5 +1,6 @@
 /* ══════════════════════════════════════════
    GhostChat V6 — app.js (Core Logic)
+   Mobile-fixed build
    ══════════════════════════════════════════ */
 
 // ─── State ───
@@ -197,15 +198,22 @@ function openChat(peerId) {
     // Update header
     updateChatHeader(peerId);
 
-    // Slide to chat screen
-    $('home-screen').classList.add('slide-left');
+    // Slide to chat screen (mobile pushes home left, chat slides in)
+    $('home-screen').classList.add('pushed');
     $('chat-screen').classList.add('active');
+    // Scroll to bottom after render
+    setTimeout(() => {
+        const mc = $('messages-container');
+        if (mc) mc.scrollTop = mc.scrollHeight;
+    }, 100);
 }
 
 $('chat-back-btn').onclick = () => {
-    $('home-screen').classList.remove('slide-left');
+    $('home-screen').classList.remove('pushed');
     $('chat-screen').classList.remove('active');
     currentPeerId = null;
+    // Clear search
+    $('chat-search-bar').classList.add('hidden');
 };
 
 function updateChatHeader(peerId) {
