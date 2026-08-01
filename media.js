@@ -1,244 +1,204 @@
-// Media, Calls, and Search Logic for V5
+/* ══════════════════════════════════════════
+   GhostChat V6 — media.js (Calls & Voice)
+   ══════════════════════════════════════════ */
 
-// Search UI
-searchBtn.addEventListener('click', () => {
-    searchBox.classList.remove('hidden');
-    searchInput.focus();
-});
-closeSearchBtn.addEventListener('click', () => {
-    searchBox.classList.add('hidden');
-    searchInput.value = '';
-    removeHighlights();
-});
-searchInput.addEventListener('input', () => {
-    const term = searchInput.value.toLowerCase();
-    removeHighlights();
-    if (!term) return;
-    
-    const msgs = messagesContainer.querySelectorAll('.message span');
-    msgs.forEach(msg => {
-        if (msg.textContent.toLowerCase().includes(term)) {
-            msg.parentElement.style.border = '2px solid var(--primary)';
-        }
-    });
-});
-function removeHighlights() {
-    const msgs = messagesContainer.querySelectorAll('.message');
-    msgs.forEach(msg => {
-        if (msg.classList.contains('received')) msg.style.border = '1px solid var(--glass-border)';
-        else msg.style.border = 'none';
-    });
-}
+// ─── Voice Recording ───
+let mediaRecorder=null, audioChunks=[], isRecording=false;
+let audioCtx=null, analyser=null, animFrame=null;
 
-// File Upload with Progress (Mocked for chunking visualization)
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file || Object.keys(connections).length === 0) return;
-    if (file.size > 50 * 1024 * 1024) { alert('File too large (Max 50MB).'); return; }
+const voiceBtn  = document.getElementById('voice-btn');
+const voiceCanvas = document.getElementById('voice-canvas');
+const canvasCtx = voiceCanvas.getContext('2d');
 
-    const uploadProgress = document.getElementById('upload-progress');
-    const uploadBar = document.getElementById('upload-bar');
-    uploadProgress.classList.remove('hidden');
-    uploadBar.style.width = '0%';
+voiceBtn.addEventListener('pointerdown', startRec);
+voiceBtn.addEventListener('pointerup',   stopRec);
+voiceBtn.addEventListener('pointerleave',stopRec);
 
-    const reader = new FileReader();
-    reader.onprogress = (event) => {
-        if (event.lengthComputable) {
-            const percentLoaded = Math.round((event.loaded / event.total) * 100);
-            uploadBar.style.width = percentLoaded + '%';
-        }
-    };
-    reader.onload = (event) => {
-        uploadBar.style.width = '100%';
-        setTimeout(() => uploadProgress.classList.add('hidden'), 500);
-
-        const base64 = event.target.result;
-        const msgId = Math.random().toString(36).substr(2, 9);
-        let type = file.type.startsWith('image/') ? 'image' : (file.type.startsWith('video/') ? 'video' : null);
-        if (!type) return;
-
-        const payload = { type, content: base64, msgId, selfDestruct: settings.selfDestruct };
-        broadcastMessage(payload);
-        renderMessage(payload, 'sent', 'Me');
-        saveToHistory(payload, 'sent', 'Me');
-    };
-    reader.readAsDataURL(file);
-});
-
-// Voice Messaging & Visualizer
-const voiceVisualizer = document.getElementById('voice-visualizer');
-const canvasCtx = voiceVisualizer.getContext('2d');
-let audioCtx, analyser, dataArray;
-let animFrame;
-
-voiceBtn.addEventListener('pointerdown', startVoiceRecord);
-voiceBtn.addEventListener('pointerup', stopVoiceRecord);
-voiceBtn.addEventListener('pointerleave', stopVoiceRecord);
-
-async function startVoiceRecord(e) {
+async function startRec(e) {
     e.preventDefault();
-    if (Object.keys(connections).length === 0) return;
+    if (Object.keys(connections).length===0) return;
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        
-        // Setup Visualizer
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = audioCtx.createAnalyser();
-        const source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyser);
-        analyser.fftSize = 256;
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-        voiceVisualizer.classList.remove('hidden');
-        drawVisualizer();
-        
-        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-        mediaRecorder.onstop = () => {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+        analyser  = audioCtx.createAnalyser();
+        const src = audioCtx.createMediaStreamSource(stream);
+        src.connect(analyser);
+        analyser.fftSize=256;
+        const dataArr=new Uint8Array(analyser.frequencyBinCount);
+        voiceCanvas.classList.remove('hidden');
+        (function draw(){
+            animFrame=requestAnimationFrame(draw);
+            analyser.getByteFrequencyData(dataArr);
+            canvasCtx.fillStyle='rgba(0,0,0,.85)';
+            canvasCtx.fillRect(0,0,voiceCanvas.width,voiceCanvas.height);
+            const bw=(voiceCanvas.width/dataArr.length)*2.5;
+            let x=0;
+            for (let i=0;i<dataArr.length;i++) {
+                const bh=dataArr[i]/2;
+                canvasCtx.fillStyle='#10b981';
+                canvasCtx.fillRect(x,voiceCanvas.height-bh,bw,bh);
+                x+=bw+1;
+            }
+        })();
+
+        mediaRecorder=new MediaRecorder(stream);
+        audioChunks=[];
+        mediaRecorder.ondataavailable=e=>audioChunks.push(e.data);
+        mediaRecorder.onstop=()=>{
             cancelAnimationFrame(animFrame);
-            voiceVisualizer.classList.add('hidden');
-            if (audioCtx) audioCtx.close();
-
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const base64 = event.target.result;
-                const msgId = Math.random().toString(36).substr(2, 9);
-                const payload = { type: 'audio', content: base64, msgId, selfDestruct: settings.selfDestruct };
-                broadcastMessage(payload);
-                renderMessage(payload, 'sent', 'Me');
-                saveToHistory(payload, 'sent', 'Me');
+            voiceCanvas.classList.add('hidden');
+            audioCtx?.close();
+            const blob=new Blob(audioChunks,{type:'audio/webm'});
+            const r=new FileReader();
+            r.onload=ev=>{
+                const msgId=uid();
+                const payload={type:'audio',content:ev.target.result,msgId,selfDestruct:settings.selfDestruct,timestamp:Date.now()};
+                broadcast(payload);
+                renderMsg(payload,'sent','Me',currentPeerId);
+                if (currentPeerId) saveToHistory(currentPeerId,payload,'sent','Me');
+                updateContact(currentPeerId,{lastMsg:'🎤 Voice message',lastTime:Date.now()});
+                renderChatList();
             };
-            reader.readAsDataURL(audioBlob);
-            stream.getTracks().forEach(track => track.stop());
+            r.readAsDataURL(blob);
+            stream.getTracks().forEach(t=>t.stop());
         };
-        
         mediaRecorder.start();
-        isRecording = true;
+        isRecording=true;
         voiceBtn.classList.add('recording');
-    } catch (err) {
-        alert('Microphone required.');
-    }
+    } catch(err) { alert('Microphone access required.'); }
 }
 
-function drawVisualizer() {
-    animFrame = requestAnimationFrame(drawVisualizer);
-    analyser.getByteFrequencyData(dataArray);
-    canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    canvasCtx.fillRect(0, 0, voiceVisualizer.width, voiceVisualizer.height);
-    const barWidth = (voiceVisualizer.width / dataArray.length) * 2.5;
-    let x = 0;
-    for(let i = 0; i < dataArray.length; i++) {
-        const barHeight = dataArray[i] / 2;
-        canvasCtx.fillStyle = '#10b981'; // Primary Green
-        canvasCtx.fillRect(x, voiceVisualizer.height - barHeight, barWidth, barHeight);
-        x += barWidth + 1;
-    }
-}
-
-function stopVoiceRecord(e) {
+function stopRec(e) {
     e.preventDefault();
-    if (isRecording && mediaRecorder.state !== 'inactive') {
+    if (isRecording && mediaRecorder?.state!=='inactive') {
         mediaRecorder.stop();
-        isRecording = false;
+        isRecording=false;
         voiceBtn.classList.remove('recording');
     }
 }
 
-// Calls & Screen Sharing
-const screenshareBtn = document.getElementById('screenshare-btn');
-let screenStream = null;
+// ─── Calls ───
+let currentCall=null, localStream=null, isMuted=false, isCamOff=false;
+const callScreen     = document.getElementById('call-screen');
+const remoteVideo    = document.getElementById('remote-video');
+const localVideo     = document.getElementById('local-video');
+const callAudioBg    = document.getElementById('call-audio-bg');
+const callBigAvatar  = document.getElementById('call-big-avatar');
+const callPeerNameEl = document.getElementById('call-peer-name-el');
+const callStateEl    = document.getElementById('call-state-el');
+const endCallBtn     = document.getElementById('end-call-btn');
+const acceptCallBtn  = document.getElementById('accept-call-btn');
+const btnMute        = document.getElementById('btn-mute');
+const btnCam         = document.getElementById('btn-cam-toggle');
+const btnScreen      = document.getElementById('btn-screenshare');
 
-async function makeCall(videoEnabled) {
-    const peerIds = Object.keys(connections);
-    if (peerIds.length === 0) { alert('Connect first!'); return; }
-    const targetPeer = peerIds[0];
+// Attach header call buttons (chat screen)
+document.getElementById('audio-call-btn').onclick=()=>makeCall(currentPeerId,'audio');
+document.getElementById('video-call-btn').onclick=()=>makeCall(currentPeerId,'video');
 
+async function makeCall(peerId, type) {
+    if (!peerId||!connections[peerId]?.open) { alert('No active connection.'); return; }
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: videoEnabled, audio: true });
-        document.getElementById('local-video').srcObject = localStream;
-        document.getElementById('local-video').style.display = videoEnabled ? 'block' : 'none';
-        
-        document.getElementById('call-title').textContent = videoEnabled ? 'Calling...' : 'Calling (Audio)...';
-        document.getElementById('call-caller-name').textContent = targetPeer;
-        callModal.classList.remove('hidden');
-        acceptCallBtn.classList.add('hidden');
-        
-        // Ring sound out
-        soundRing.play().catch(e=>{});
-
-        currentCall = peer.call(targetPeer, localStream);
-        currentCall.on('stream', (remoteStream) => {
-            soundRing.pause(); soundRing.currentTime = 0;
-            document.getElementById('remote-video').srcObject = remoteStream;
-            document.getElementById('call-title').textContent = 'In Call';
+        localStream=await navigator.mediaDevices.getUserMedia({ video:type==='video', audio:true });
+        showCallScreen(peerId, type, false);
+        localVideo.srcObject=localStream;
+        localVideo.style.display = type==='video' ? 'block':'none';
+        document.getElementById('sound-ring').play().catch(()=>{});
+        currentCall=peer.call(peerId, localStream);
+        currentCall.on('stream', remoteStream=>{
+            document.getElementById('sound-ring').pause();
+            document.getElementById('sound-ring').currentTime=0;
+            remoteVideo.srcObject=remoteStream;
+            callAudioBg.style.display = type==='video'?'none':'flex';
+            callStateEl.textContent='In call';
         });
         currentCall.on('close', endCall);
-    } catch (err) {
-        alert('Camera/Mic access denied.');
-    }
+        addCallLog(peerId, type, 'out');
+    } catch(e) { alert('Camera/mic denied.'); }
 }
 
-audioCallBtn.addEventListener('click', () => makeCall(false));
-videoCallBtn.addEventListener('click', () => makeCall(true));
-
-// Peer incoming call event is in app.js
 function handleIncomingCall(call) {
-    currentCall = call;
-    document.getElementById('call-title').textContent = 'Incoming Call...';
-    document.getElementById('call-caller-name').textContent = call.peer;
-    callModal.classList.remove('hidden');
-    acceptCallBtn.classList.remove('hidden');
-    soundRing.play().catch(e=>{});
+    currentCall=call;
+    const peerId=call.peer;
+    showCallScreen(peerId, 'video', true);
+    document.getElementById('sound-ring').play().catch(()=>{});
     call.on('close', endCall);
+    addCallLog(peerId, 'video', 'in');
 }
 
-// Replace peer.on('call') in app.js if needed, or simply map it:
-peer.on('call', handleIncomingCall);
-
-acceptCallBtn.addEventListener('click', async () => {
-    soundRing.pause(); soundRing.currentTime = 0;
+acceptCallBtn.onclick=async()=>{
+    document.getElementById('sound-ring').pause();
+    document.getElementById('sound-ring').currentTime=0;
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById('local-video').srcObject = localStream;
+        localStream=await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+        localVideo.srcObject=localStream;
         currentCall.answer(localStream);
-        currentCall.on('stream', (remoteStream) => {
-            document.getElementById('remote-video').srcObject = remoteStream;
-        });
+        currentCall.on('stream', s=>{ remoteVideo.srcObject=s; callAudioBg.style.display='none'; callStateEl.textContent='In call'; });
         acceptCallBtn.classList.add('hidden');
-        document.getElementById('call-title').textContent = 'In Call';
-    } catch (err) {
-        currentCall.close();
-    }
-});
+        callStateEl.textContent='In call';
+    } catch(e) { currentCall.close(); }
+};
 
-endCallBtn.addEventListener('click', () => {
-    soundRing.pause(); soundRing.currentTime = 0;
-    if (currentCall) currentCall.close();
-    endCall();
-});
+endCallBtn.onclick=()=>{ document.getElementById('sound-ring').pause(); currentCall?.close(); endCall(); };
 
-screenshareBtn.addEventListener('click', async () => {
-    if (!currentCall || !localStream) return;
+function showCallScreen(peerId, type, incoming) {
+    const p=peerProfiles[peerId]||contacts[peerId]||{};
+    callPeerNameEl.textContent=p.name||peerId;
+    callStateEl.textContent=incoming?'Incoming call...':'Calling...';
+    callAudioBg.style.display='flex';
+    callBigAvatar.innerHTML=p.avatar?`<img src="${p.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`:'<i class="fa-solid fa-user"></i>';
+    remoteVideo.srcObject=null;
+    localVideo.srcObject=null;
+    callScreen.classList.remove('hidden');
+    acceptCallBtn.classList.toggle('hidden',!incoming);
+    btnMute.classList.remove('hidden');
+    btnCam.classList.remove('hidden');
+    btnScreen.classList.remove('hidden');
+}
+
+function endCall() {
+    localStream?.getTracks().forEach(t=>t.stop());
+    localStream=null; currentCall=null;
+    remoteVideo.srcObject=null; localVideo.srcObject=null;
+    callScreen.classList.add('hidden');
+    document.getElementById('sound-ring').pause();
+    document.getElementById('sound-ring').currentTime=0;
+    sysMsg('Call ended.');
+}
+
+// Mute
+btnMute.onclick=()=>{
+    if (!localStream) return;
+    isMuted=!isMuted;
+    localStream.getAudioTracks().forEach(t=>t.enabled=!isMuted);
+    btnMute.classList.toggle('active',isMuted);
+    btnMute.innerHTML=isMuted?'<i class="fa-solid fa-microphone-slash"></i>':'<i class="fa-solid fa-microphone"></i>';
+};
+
+// Camera Toggle
+btnCam.onclick=()=>{
+    if (!localStream) return;
+    isCamOff=!isCamOff;
+    localStream.getVideoTracks().forEach(t=>t.enabled=!isCamOff);
+    btnCam.classList.toggle('active',isCamOff);
+    btnCam.innerHTML=isCamOff?'<i class="fa-solid fa-video-slash"></i>':'<i class="fa-solid fa-video"></i>';
+};
+
+// Screen Share
+btnScreen.onclick=async()=>{
+    if (!currentCall) return;
     try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        const videoTrack = screenStream.getVideoTracks()[0];
-        
-        // Replace track in peer connection
-        const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
-        if (sender) sender.replaceTrack(videoTrack);
-        
-        document.getElementById('local-video').srcObject = screenStream;
-        screenshareBtn.style.background = 'var(--primary)';
-
-        videoTrack.onended = () => {
-            // Revert to camera
-            const camTrack = localStream.getVideoTracks()[0];
-            if (sender) sender.replaceTrack(camTrack);
-            document.getElementById('local-video').srcObject = localStream;
-            screenshareBtn.style.background = 'rgba(255,255,255,0.2)';
+        const scrStream=await navigator.mediaDevices.getDisplayMedia({ video:true });
+        const track=scrStream.getVideoTracks()[0];
+        const sender=currentCall.peerConnection?.getSenders().find(s=>s.track?.kind==='video');
+        if (sender) sender.replaceTrack(track);
+        localVideo.srcObject=scrStream;
+        btnScreen.classList.add('active');
+        track.onended=()=>{
+            const camTrack=localStream?.getVideoTracks()[0];
+            if (sender&&camTrack) sender.replaceTrack(camTrack);
+            localVideo.srcObject=localStream;
+            btnScreen.classList.remove('active');
         };
-    } catch (err) {
-        console.error("Screen share failed", err);
-    }
-});
+    } catch(e) { console.warn('Screen share cancelled'); }
+};
