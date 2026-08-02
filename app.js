@@ -726,7 +726,6 @@ $('home-search-input').oninput = () => {
 };
 
 // ─── Settings ───
-$('home-settings-btn').onclick = () => show('settings-modal');
 $('close-settings-btn').onclick = () => {
     settings.imoTyping    = $('s-imo-typing').checked;
     settings.selfDestruct = $('s-self-destruct').checked;
@@ -806,6 +805,64 @@ function sendMsg() {
     if (currentPeerId) saveToHistory(currentPeerId, payload, 'sent', 'Me');
 }
 
+function buildAudioPlayer(src) {
+    const wrap = document.createElement('div');
+    wrap.className = 'custom-audio-player';
+    wrap.innerHTML = `
+        <button class="audio-play-btn"><i class="fa-solid fa-play"></i></button>
+        <div class="audio-track">
+            <div class="audio-progress"></div>
+        </div>
+        <span class="audio-time">0:00</span>
+        <audio src="${src}" hidden></audio>
+    `;
+    const audio = wrap.querySelector('audio');
+    const btn = wrap.querySelector('button');
+    const track = wrap.querySelector('.audio-track');
+    const prog = wrap.querySelector('.audio-progress');
+    const timeDisplay = wrap.querySelector('.audio-time');
+
+    btn.onclick = () => {
+        if (audio.paused) {
+            document.querySelectorAll('.custom-audio-player audio').forEach(a => {
+                a.pause();
+                a.parentElement.querySelector('.audio-play-btn').innerHTML = '<i class="fa-solid fa-play"></i>';
+            });
+            audio.play().catch(()=>{});
+            btn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+        } else {
+            audio.pause();
+            btn.innerHTML = '<i class="fa-solid fa-play"></i>';
+        }
+    };
+    audio.ontimeupdate = () => {
+        const p = (audio.currentTime / (audio.duration || 1)) * 100;
+        prog.style.width = p + '%';
+        const m = Math.floor(audio.currentTime / 60);
+        const s = Math.floor(audio.currentTime % 60).toString().padStart(2, '0');
+        timeDisplay.textContent = `${m}:${s}`;
+    };
+    audio.onended = () => {
+        btn.innerHTML = '<i class="fa-solid fa-play"></i>';
+        prog.style.width = '0%';
+        timeDisplay.textContent = '0:00';
+    };
+    audio.onloadedmetadata = () => {
+        const d = audio.duration;
+        if (d && d !== Infinity) {
+            const m = Math.floor(d / 60);
+            const s = Math.floor(d % 60).toString().padStart(2, '0');
+            timeDisplay.textContent = `${m}:${s}`;
+        }
+    };
+    track.onclick = (e) => {
+        const rect = track.getBoundingClientRect();
+        const p = (e.clientX - rect.left) / rect.width;
+        audio.currentTime = p * (audio.duration || 0);
+    };
+    return wrap;
+}
+
 // ─── Render Message ───
 function renderMsg(data, align, senderName, peerId) {
     if (data.type==='system') { sysMsg(data.content); return; }
@@ -826,7 +883,7 @@ function renderMsg(data, align, senderName, peerId) {
     if (data.type==='text')  body.textContent=data.content;
     else if (data.type==='image') { const i=document.createElement('img'); i.src=data.content; body.appendChild(i); }
     else if (data.type==='video') { const v=document.createElement('video'); v.src=data.content; v.controls=true; body.appendChild(v); }
-    else if (data.type==='audio') { const a=document.createElement('audio'); a.src=data.content; a.controls=true; body.appendChild(a); }
+    else if (data.type==='audio') { body.appendChild(buildAudioPlayer(data.content)); }
     div.appendChild(body);
 
     const meta=document.createElement('div'); meta.className='msg-meta';
