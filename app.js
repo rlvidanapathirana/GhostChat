@@ -180,9 +180,12 @@ $('update-account-btn').onclick = () => {
 
 function pingContacts() {
     Object.keys(contacts).forEach(peerId => {
-        if (!connections[peerId]?.open && peerId !== 'GROUP_HOST' && !peerId.startsWith('grp_')) {
+        if (!connections[peerId] && peerId !== 'GROUP_HOST' && !peerId.startsWith('grp_')) {
             const conn = peer.connect(peerId, { reliable:true });
-            if (conn) setupConn(conn);
+            if (conn) {
+                connections[peerId] = conn;
+                setupConn(conn);
+            }
         }
     });
 }
@@ -219,6 +222,7 @@ function startPeer() {
 function setupConn(conn) {
     conn.on('open', () => {
         connections[conn.peer] = conn;
+        if (currentPeerId === conn.peer) updateChatHeader(conn.peer);
         conn.send({ type:'profile-sync', profile:myProfile });
         sysMsg(`${conn.peer} connected`);
         if (isHost && Object.keys(connections).length > 1) {
@@ -571,10 +575,13 @@ function renderChatList() {
             // Always open the chat screen first
             openChat(peerId);
             // If not connected, try to connect in background
-            if (!connections[peerId]?.open) {
+            if (!connections[peerId]) {
                 const conn = peer.connect(peerId, { reliable:true });
-                isHost = false;
-                setupConn(conn);
+                if (conn) {
+                    connections[peerId] = conn;
+                    isHost = false;
+                    setupConn(conn);
+                }
             }
         };
         list.appendChild(li);
@@ -950,17 +957,34 @@ msgInput.oninput = () => {
     const has = msgInput.value.trim().length>0;
     $('send-btn').classList.toggle('hidden',!has);
     $('voice-btn').classList.toggle('hidden',has);
-    broadcast({ type:'typing' });
-    if (settings.imoTyping) broadcast({ type:'live-typing', content:msgInput.value });
+    
+    if (currentPeerId === 'GROUP_HOST') {
+        broadcast({ type:'typing' });
+        if (settings.imoTyping) broadcast({ type:'live-typing', content:msgInput.value });
+    } else {
+        const c = connections[currentPeerId];
+        if (c && c.open) {
+            c.send({ type:'typing' });
+            if (settings.imoTyping) c.send({ type:'live-typing', content:msgInput.value });
+        }
+    }
 };
 msgInput.addEventListener('keydown', e => { if (e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); sendMsg(); } });
 $('send-btn').onclick = sendMsg;
 
 function sendMsg() {
     const text = msgInput.value.trim();
-    if (!text || Object.keys(connections).length===0) return;
+    if (!text) return;
+    
+    // Allow Group Hosts to post to empty lobby
+    if (currentPeerId !== 'GROUP_HOST' && (!connections[currentPeerId] || !connections[currentPeerId].open)) {
+        sysMsg('Connecting... Please wait a moment.');
+        return;
+    }
+    
     const msgId = uid();
     const payload = { type:'text', content:text, msgId, replyTo:replyMsgId, selfDestruct:settings.selfDestruct, timestamp:Date.now() };
+    
     if (currentPeerId === 'GROUP_HOST') {
         payload.originalSender = myProfile.customId;
         broadcast(payload);
@@ -968,12 +992,13 @@ function sendMsg() {
         if (settings.imoTyping) broadcast({ type:'live-typing', content:'' });
         saveToHistory('GROUP_HOST', payload, 'sent', 'Me');
     } else {
-        broadcast(payload);
+        const c = connections[currentPeerId];
+        c.send(payload);
         renderMsg(payload,'sent','Me', currentPeerId);
-        if (settings.imoTyping) broadcast({ type:'live-typing', content:'' });
+        if (settings.imoTyping) c.send({ type:'live-typing', content:'' });
         const preview = text.length>40?text.substr(0,40)+'…':text;
         updateContact(currentPeerId, { lastMsg:preview, lastTime:Date.now() });
-        if (currentPeerId) saveToHistory(currentPeerId, payload, 'sent', 'Me');
+        saveToHistory(currentPeerId, payload, 'sent', 'Me');
     }
     
     $('sound-msg-out').currentTime=0; $('sound-msg-out').play().catch(()=>{});
@@ -1167,7 +1192,17 @@ $('file-input').onchange=e=>{
         if (!type) return;
         const msgId=uid();
         const payload={type,content:d,msgId,selfDestruct:settings.selfDestruct,timestamp:Date.now()};
-        broadcast(payload); renderMsg(payload,'sent','Me',currentPeerId);
+        
+        if (currentPeerId === 'GROUP_HOST') {
+            payload.originalSender = myProfile.customId;
+            broadcast(payload);
+        } else {
+            const c = connections[currentPeerId];
+            if (c && c.open) c.send(payload);
+            else { alert('Not connected!'); return; }
+        }
+        
+        renderMsg(payload,'sent','Me',currentPeerId);
         saveToHistory(currentPeerId,payload,'sent','Me');
         updateContact(currentPeerId,{lastMsg:`[${type}]`,lastTime:Date.now()}); renderChatList();
     }, p=>{ bar.style.width=p+'%'; });
