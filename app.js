@@ -58,11 +58,13 @@ $('setup-avatar-file').onchange = e => {
 };
 $('save-profile-btn').onclick = async () => {
     const name = $('setup-name').value.trim();
-    const id   = $('setup-username').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
+    const id   = $('setup-id').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
+    const phone = $('setup-phone').value.trim();
+    const email = $('setup-email').value.trim();
     const status=$('setup-status').value.trim() || myProfile.status;
     if (!name || !id) { showErr('setup-err','Fill in all fields.'); return; }
     if (!myProfile.avatar) myProfile.avatar = defaultAvatar();
-    myProfile = { ...myProfile, name, customId:id, status, isGroup: false, groupMembers: [] };
+    myProfile = { ...myProfile, name, customId:id, phone, email, status, isGroup: false, groupMembers: [] };
     localStorage.setItem('gc_profile', JSON.stringify(myProfile));
     hide('profile-modal');
     applyProfileUI();
@@ -106,36 +108,39 @@ $('chat-header-peer').onclick = () => {
 $('close-encryption-btn').onclick = () => hide('encryption-modal');
 
 // ─── Account Edit ───
-$('menu-account').onclick = () => openAccountEdit();
-$('home-my-avatar').onclick = () => openAccountEdit();
-
-function openAccountEdit() {
-    $('edit-avatar-prev').innerHTML = `<img src="${myProfile.avatar}">`;
+$('menu-account').onclick = () => {
     $('edit-name').value = myProfile.name;
     $('edit-username').value = myProfile.customId;
+    $('edit-phone').value = myProfile.phone || '';
+    $('edit-email').value = myProfile.email || '';
+    $('edit-avatar-prev').innerHTML = `<img src="${myProfile.avatar}">`;
     show('account-modal');
-}
+};
+$('home-my-avatar').onclick = $('menu-account').onclick;
+
 $('close-account-btn').onclick = () => hide('account-modal');
 
 $('edit-avatar-prev').onclick = () => $('edit-avatar-file').click();
+let tempEditAvatar = null;
 $('edit-avatar-file').onchange = e => {
     const f = e.target.files[0]; if (!f) return;
-    readFile(f, d => {
-        $('edit-avatar-prev').innerHTML = `<img src="${d}">`;
-        $('edit-avatar-file').dataset.b64 = d;
-    });
+    readFile(f, d => { tempEditAvatar = d; $('edit-avatar-prev').innerHTML = `<img src="${d}">`; });
 };
 $('update-account-btn').onclick = () => {
-    const newName = $('edit-name').value.trim();
-    const newId = $('edit-username').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
-    const newAv = $('edit-avatar-file').dataset.b64;
+    const name = $('edit-name').value.trim();
+    const id = $('edit-username').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
+    const phone = $('edit-phone').value.trim();
+    const email = $('edit-email').value.trim();
     
-    if (!newName || !newId) return;
+    if (!name || !id) return;
     
-    const idChanged = newId !== myProfile.customId;
-    myProfile.name = newName;
-    myProfile.customId = newId;
-    if (newAv) myProfile.avatar = newAv;
+    myProfile.name = name;
+    myProfile.phone = phone;
+    myProfile.email = email;
+    if (tempEditAvatar) myProfile.avatar = tempEditAvatar;
+    
+    const oldId = myProfile.customId;
+    myProfile.customId = id;
     
     localStorage.setItem('gc_profile', JSON.stringify(myProfile));
     applyProfileUI();
@@ -455,11 +460,35 @@ function clearUnread(peerId) {
 function renderChatList() {
     const list = $('chat-list');
     const items = Object.entries(contacts).sort((a,b) => (b[1].lastTime||0)-(a[1].lastTime||0));
-    if (!items.length) {
+    if (!items.length && !myProfile.isGroup) {
         list.innerHTML = `<li class="empty-state"><i class="fa-solid fa-ghost"></i><p>No conversations yet</p><small>Tap the ✉️ button below to start</small></li>`;
         return;
     }
     list.innerHTML = '';
+
+    // Group Host Chat Item
+    if (myProfile.isGroup) {
+        const memCount = myProfile.groupMembers?.length || 1;
+        const groupLi = document.createElement('li');
+        groupLi.className = 'chat-list-item';
+        groupLi.style.background = 'rgba(16, 185, 129, 0.1)'; // faint green highlight
+        groupLi.innerHTML = `
+            <div class="chat-item-avatar">
+                <div style="width:50px;height:50px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;color:white;font-size:1.5rem;"><i class="fa-solid fa-users"></i></div>
+            </div>
+            <div class="chat-item-body">
+                <div class="chat-item-top">
+                    <span class="chat-item-name" style="color:var(--primary)">${myProfile.groupName} (Host)</span>
+                </div>
+                <div class="chat-item-bottom">
+                    <span class="chat-item-last" style="color:var(--primary)">Tap to open lobby · ${memCount} members</span>
+                </div>
+            </div>
+        `;
+        groupLi.onclick = () => openGroupHostChat();
+        list.appendChild(groupLi);
+    }
+
     items.forEach(([peerId, c]) => {
         const online = !!connections[peerId]?.open;
         const time = c.lastTime ? timeAgo(c.lastTime) : '';
@@ -480,6 +509,12 @@ function renderChatList() {
                     ${c.unread>0?`<span class="unread-badge">${c.unread}</span>`:''}
                 </div>
             </div>`;
+        
+        let pressT;
+        li.addEventListener('pointerdown', e => { pressT=setTimeout(()=>showChatContextMenu(e,peerId),500); });
+        li.addEventListener('pointerup', ()=>clearTimeout(pressT));
+        li.addEventListener('pointerleave', ()=>clearTimeout(pressT));
+        
         li.onclick = () => {
             // Always open the chat screen first
             openChat(peerId);
@@ -492,6 +527,47 @@ function renderChatList() {
         };
         list.appendChild(li);
     });
+}
+
+function openGroupHostChat() {
+    currentPeerId = 'GROUP_HOST';
+    renderChatList();
+    loadPeerHistory('GROUP_HOST');
+    safeSet('chat-peer-name', el => el.textContent = myProfile.groupName + ' (Lobby)');
+    safeSet('chat-peer-avatar', el => el.src = defaultAvatar());
+    safeSet('chat-peer-status', el => {
+        el.textContent = `${myProfile.groupMembers?.length || 1} members active`;
+        el.className = 'peer-sub-text';
+    });
+    const dot = $('chat-online-dot');
+    if(dot) dot.classList.remove('hidden');
+
+    $('home-screen').classList.add('pushed');
+    $('chat-screen').classList.add('active');
+    setTimeout(() => {
+        const mc = $('messages-container');
+        if (mc) mc.scrollTop = mc.scrollHeight;
+    }, 100);
+}
+
+function showChatContextMenu(e, peerId) {
+    e.preventDefault();
+    e.stopPropagation();
+    const pop=$('reaction-popup');
+    pop.innerHTML='';
+    const d=document.createElement('span'); d.className='r-action del'; d.innerHTML='<i class="fa-solid fa-trash"></i> Delete Chat History';
+    d.onclick=async()=>{ 
+        if(confirm('Delete chat history for this contact?')) {
+            await localforage.removeItem(`hist_${peerId}`);
+            delete contacts[peerId];
+            saveContacts();
+            renderChatList();
+        }
+        pop.classList.add('hidden'); 
+    }; 
+    pop.appendChild(d);
+    const x=Math.min(e.clientX,window.innerWidth-200), y=Math.max(e.clientY-30,10);
+    pop.style.left=x+'px'; pop.style.top=y+'px'; pop.classList.remove('hidden');
 }
 
 // ─── Status & Stories Feature ───
@@ -712,6 +788,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
         btn.classList.add('active');
         $('tab-'+btn.dataset.tab).classList.add('active');
+        
+        // Auto-request statuses when opening status tab
+        if (btn.dataset.tab === 'status' && !myProfile.isGroup) {
+            broadcast({ type:'profile-sync', profile:myProfile });
+        }
     };
 });
 
@@ -792,17 +873,26 @@ function sendMsg() {
     if (!text || Object.keys(connections).length===0) return;
     const msgId = uid();
     const payload = { type:'text', content:text, msgId, replyTo:replyMsgId, selfDestruct:settings.selfDestruct, timestamp:Date.now() };
-    broadcast(payload);
-    renderMsg(payload,'sent','Me', currentPeerId);
+    if (currentPeerId === 'GROUP_HOST') {
+        payload.originalSender = myProfile.customId;
+        broadcast(payload);
+        renderMsg(payload,'sent','Me', currentPeerId);
+        if (settings.imoTyping) broadcast({ type:'live-typing', content:'' });
+        saveToHistory('GROUP_HOST', payload, 'sent', 'Me');
+    } else {
+        broadcast(payload);
+        renderMsg(payload,'sent','Me', currentPeerId);
+        if (settings.imoTyping) broadcast({ type:'live-typing', content:'' });
+        const preview = text.length>40?text.substr(0,40)+'…':text;
+        updateContact(currentPeerId, { lastMsg:preview, lastTime:Date.now() });
+        if (currentPeerId) saveToHistory(currentPeerId, payload, 'sent', 'Me');
+    }
+    
     $('sound-msg-out').currentTime=0; $('sound-msg-out').play().catch(()=>{});
     msgInput.value=''; msgInput.style.height='auto';
     $('send-btn').classList.add('hidden'); $('voice-btn').classList.remove('hidden');
-    if (settings.imoTyping) broadcast({ type:'live-typing', content:'' });
     closeReply();
-    const preview = text.length>40?text.substr(0,40)+'…':text;
-    updateContact(currentPeerId, { lastMsg:preview, lastTime:Date.now() });
     renderChatList();
-    if (currentPeerId) saveToHistory(currentPeerId, payload, 'sent', 'Me');
 }
 
 function buildAudioPlayer(src) {
@@ -938,8 +1028,12 @@ function showCtxMenu(e,msgId,align) {
     const dv=document.createElement('div'); dv.className='r-div'; pop.appendChild(dv);
     const ra=document.createElement('span'); ra.className='r-action'; ra.textContent='↩ Reply';
     ra.onclick=()=>{ setReply(msgId); pop.classList.add('hidden'); }; pop.appendChild(ra);
+    
+    const dm=document.createElement('span'); dm.className='r-action del'; dm.textContent='🗑 Delete for Me';
+    dm.onclick=()=>{ deleteMsgForMe(msgId); pop.classList.add('hidden'); }; pop.appendChild(dm);
+
     if (align==='sent') {
-        const da=document.createElement('span'); da.className='r-action del'; da.textContent='🗑 Delete';
+        const da=document.createElement('span'); da.className='r-action del'; da.textContent='🗑 Delete for Everyone';
         da.onclick=()=>{ deleteMsgForAll(msgId); pop.classList.add('hidden'); }; pop.appendChild(da);
     }
     const x=Math.min(e.clientX,window.innerWidth-260), y=Math.max(e.clientY-55,10);
@@ -962,9 +1056,13 @@ function setReply(msgId) {
 $('close-reply-btn').onclick=closeReply;
 function closeReply() { replyMsgId=null; $('reply-preview-bar').classList.add('hidden'); }
 
+function deleteMsgForMe(msgId) {
+    const el=$(`msg-${msgId}`); if (el) el.innerHTML='<em style="opacity:.4">🚫 Deleted for you</em>';
+    deleteFromHistory(currentPeerId,msgId);
+}
 function deleteMsgForAll(msgId) {
     const p={type:'delete-msg',msgId}; broadcast(p);
-    const el=$(`msg-${msgId}`); if (el) el.innerHTML='<em style="opacity:.4">🚫 Deleted</em>';
+    const el=$(`msg-${msgId}`); if (el) el.innerHTML='<em style="opacity:.4">🚫 Deleted for everyone</em>';
     deleteFromHistory(currentPeerId,msgId);
 }
 
@@ -1097,7 +1195,28 @@ function defaultAvatar() {
 }
 function readFile(f, onLoad, onProgress=null) {
     const r=new FileReader();
-    r.onload=e=>onLoad(e.target.result);
+    r.onload=e=>{
+        const res = e.target.result;
+        if (f.type.startsWith('image/')) {
+            const img = new Image();
+            img.onload = () => {
+                const cvs = document.createElement('canvas');
+                const MAX_WIDTH = 1200, MAX_HEIGHT = 1200;
+                let w = img.width, h = img.height;
+                if (w > MAX_WIDTH || h > MAX_HEIGHT) {
+                    if (w > h) { h *= MAX_WIDTH / w; w = MAX_WIDTH; }
+                    else { w *= MAX_HEIGHT / h; h = MAX_HEIGHT; }
+                }
+                cvs.width = w; cvs.height = h;
+                const ctx = cvs.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                onLoad(cvs.toDataURL('image/jpeg', 0.6));
+            };
+            img.src = res;
+        } else {
+            onLoad(res);
+        }
+    };
     if (onProgress) r.onprogress=e=>{ if(e.lengthComputable) onProgress(Math.round(e.loaded/e.total*100)); };
     r.readAsDataURL(f);
 }

@@ -49,16 +49,27 @@
             <label>Display Name</label>
             <input type="text" id="setup-name" placeholder="e.g. Kasun" maxlength="20">
         </div>
-        <div class="field-group mt12">
-            <label>Username (your unique ID)</label>
-            <input type="text" id="setup-username" placeholder="e.g. kasun2026" maxlength="20" autocapitalize="none">
-            <small>Friends connect to you using this. No spaces allowed.</small>
+        <div class="field-group">
+            <label>Choose a unique Username (Custom ID)</label>
+            <input type="text" id="setup-id" placeholder="e.g. nimal77" autocapitalize="none" autocorrect="off">
+            <small class="tag-red">This is how friends find you.</small>
         </div>
-        <div class="field-group mt12">
-            <label>Status</label>
-            <input type="text" id="setup-status" placeholder="Hey there! I'm on GhostChat 👻" maxlength="60">
+        <div class="field-group">
+            <label>Phone Number (Optional)</label>
+            <input type="tel" id="setup-phone" placeholder="e.g. 0771234567">
+        </div>
+        <div class="field-group">
+            <label>Email (Optional)</label>
+            <input type="email" id="setup-email" placeholder="e.g. nimal@example.com" autocapitalize="none">
+        </div>
+        <div class="field-group">
+            <label>Status message (Optional)</label>
+            <input type="text" id="setup-status" placeholder="Available" maxlength="60">
         </div>
         <p id="setup-err" class="err-msg hidden"></p>
+        <div class="legal-block mt12" style="font-size:0.85rem;">
+            <p><strong>Want friends to find you via Phone Number?</strong><br>Enter your Phone Number in the "Username" field above.</p>
+        </div>
         <button class="btn-primary w100 mt16" id="save-profile-btn"><i class="fa-solid fa-arrow-right"></i> Start Chatting</button>
     </div>
 </div>
@@ -211,6 +222,14 @@
             <label>Username (Custom ID)</label>
             <input type="text" id="edit-username" maxlength="20" autocapitalize="none">
             <small class="tag-red">Warning: Changing this will momentarily disconnect you.</small>
+        </div>
+        <div class="field-group mt12">
+            <label>Phone Number (Optional)</label>
+            <input type="tel" id="edit-phone" placeholder="e.g. 0771234567">
+        </div>
+        <div class="field-group mt12">
+            <label>Email (Optional)</label>
+            <input type="email" id="edit-email" placeholder="e.g. nimal@example.com" autocapitalize="none">
         </div>
         <button class="btn-primary w100 mt16" id="update-account-btn">Save Changes</button>
     </div>
