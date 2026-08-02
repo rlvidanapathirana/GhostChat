@@ -335,6 +335,11 @@ $('newchat-connect-btn').onclick = () => {
     // Show chat immediately with 'Connecting...' status
     openChat(id);
     const conn = peer.connect(id, { reliable:true });
+    conn._connecting = true;
+    conn.on('open', () => conn._connecting = false);
+    conn.on('error', () => conn._connecting = false);
+    conn.on('close', () => conn._connecting = false);
+    connections[id] = conn;
     setupConn(conn);
 };
 
@@ -1041,36 +1046,22 @@ function sendMsg() {
     const text = msgInput.value.trim();
     if (!text) return;
     
-    // Allow Group Hosts to post to empty lobby
-    if (currentPeerId !== 'GROUP_HOST' && (!connections[currentPeerId] || !connections[currentPeerId].open)) {
-        sysMsg('Connecting... Please wait a moment.');
-        return;
-    }
-    
     const msgId = uid();
     const payload = { type:'text', content:text, msgId, replyTo:replyMsgId, selfDestruct:settings.selfDestruct, timestamp:Date.now() };
     
-    if (currentPeerId === 'GROUP_HOST') {
-        payload.originalSender = myProfile.customId;
-        broadcast(payload);
-        renderMsg(payload,'sent','Me', currentPeerId);
-        if (settings.imoTyping) broadcast({ type:'live-typing', content:'' });
-        saveToHistory('GROUP_HOST', payload, 'sent', 'Me');
-    } else {
-        const c = connections[currentPeerId];
-        c.send(payload);
-        renderMsg(payload,'sent','Me', currentPeerId);
-        if (settings.imoTyping) c.send({ type:'live-typing', content:'' });
-        const preview = text.length>40?text.substr(0,40)+'…':text;
-        updateContact(currentPeerId, { lastMsg:preview, lastTime:Date.now() });
-        saveToHistory(currentPeerId, payload, 'sent', 'Me');
-    }
+    sendPayload(payload);
     
+    if (settings.imoTyping && currentPeerId !== 'GROUP_HOST') {
+        const c = connections[currentPeerId];
+        if (c && c.open) c.send({ type:'live-typing', content:'' });
+    } else if (settings.imoTyping && currentPeerId === 'GROUP_HOST') {
+        broadcast({ type:'live-typing', content:'' });
+    }
+
     $('sound-msg-out').currentTime=0; $('sound-msg-out').play().catch(()=>{});
     msgInput.value=''; msgInput.style.height='auto';
     $('send-btn').classList.add('hidden'); $('voice-btn').classList.remove('hidden');
     closeReply();
-    renderChatList();
 }
 
 function buildAudioPlayer(src) {
@@ -1408,24 +1399,41 @@ $('attach-contact').onclick = () => {
 };
 
 function sendPayload(payload) {
+    const finalizeSend = () => {
+        renderMsg(payload, 'sent', 'Me', currentPeerId);
+        saveToHistory(currentPeerId, payload, 'sent', 'Me');
+        const preview = payload.type === 'text' ? payload.content.substring(0, 40) + '…' : `[${payload.type}]`;
+        updateContact(currentPeerId, { lastMsg: preview, lastTime: Date.now() });
+        renderChatList();
+    };
+
     if (currentPeerId === 'GROUP_HOST') {
         payload.originalSender = myProfile.customId;
         broadcast(payload);
+        finalizeSend();
     } else {
         const c = connections[currentPeerId];
         if (c && c.open) {
             c.send(payload);
+            finalizeSend();
         } else {
             if (c && c._connecting) {
                 sysMsg('Connecting... Message will send automatically.');
-                c.on('open', () => c.send(payload));
+                c.on('open', () => {
+                    c.send(payload);
+                    finalizeSend();
+                });
                 return;
             }
             sysMsg('Not connected. Attempting to reconnect...');
-            const conn = peer.connect(currentPeerId, { reliable:true });
+            const conn = peer.connect(currentPeerId, { reliable: true });
             if (conn) {
                 conn._connecting = true;
-                conn.on('open', () => { conn._connecting = false; conn.send(payload); });
+                conn.on('open', () => {
+                    conn._connecting = false;
+                    conn.send(payload);
+                    finalizeSend();
+                });
                 conn.on('error', () => conn._connecting = false);
                 conn.on('close', () => conn._connecting = false);
                 connections[currentPeerId] = conn;
@@ -1434,11 +1442,6 @@ function sendPayload(payload) {
             return;
         }
     }
-    renderMsg(payload,'sent','Me',currentPeerId);
-    saveToHistory(currentPeerId,payload,'sent','Me');
-    const preview = payload.type==='text' ? payload.content.substring(0,40)+'…' : `[${payload.type}]`;
-    updateContact(currentPeerId,{lastMsg:preview,lastTime:Date.now()});
-    renderChatList();
 }
 
 // ─── History (IndexedDB) ───
