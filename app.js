@@ -1148,10 +1148,16 @@ function renderMsg(data, align, senderName, peerId) {
 
     const rb2=document.createElement('div'); rb2.className='react-badge hidden'; rb2.id=`react-${data.msgId}`; div.appendChild(rb2);
 
-    let pressT;
-    div.addEventListener('pointerdown', e=>{ pressT=setTimeout(()=>showCtxMenu(e,data.msgId,align),500); });
-    div.addEventListener('pointerup', ()=>clearTimeout(pressT));
-    div.addEventListener('pointerleave',()=>clearTimeout(pressT));
+    let pressT, hasMoved = false;
+    div.oncontextmenu = e => { e.preventDefault(); showCtxMenu(e, data.msgId, align); };
+    div.addEventListener('pointerdown', e => { 
+        hasMoved = false; 
+        pressT = setTimeout(() => { if (!hasMoved) showCtxMenu(e, data.msgId, align); }, 500); 
+    });
+    div.addEventListener('pointerup', () => clearTimeout(pressT));
+    div.addEventListener('pointerleave', () => clearTimeout(pressT));
+    div.addEventListener('pointermove', () => { hasMoved = true; clearTimeout(pressT); });
+    div.addEventListener('pointercancel', () => clearTimeout(pressT));
 
     wrap.appendChild(div);
     wrap.scrollTop=wrap.scrollHeight;
@@ -1232,13 +1238,17 @@ $('emoji-btn').onclick = (e) => {
     e.stopPropagation();
     const isActive = $('emoji-sticker-popup').classList.toggle('active');
     $('attach-menu').classList.remove('active');
-    $('popup-overlay').classList.toggle('active', isActive);
+    if (isActive) {
+        $('popup-overlay').classList.remove('hidden');
+        $('popup-overlay').classList.add('active');
+    } else {
+        $('popup-overlay').classList.remove('active');
+        setTimeout(() => $('popup-overlay').classList.add('hidden'), 300);
+    }
 };
 document.addEventListener('click', (e) => {
     if (!e.target.closest('#emoji-sticker-popup') && !e.target.closest('#attach-menu') && e.target.closest('#emoji-btn') === null && e.target.closest('#attach-btn') === null) {
-        $('emoji-sticker-popup').classList.remove('active');
-        $('attach-menu').classList.remove('active');
-        $('popup-overlay').classList.remove('active');
+        closePopups();
     }
 });
 
@@ -1297,8 +1307,7 @@ function loadStickers() {
 loadStickers();
 
 function sendSticker(url) {
-    $('emoji-sticker-popup').classList.remove('active');
-    $('popup-overlay').classList.remove('active');
+    closePopups();
     sendPayload({ type: 'sticker', content: url, msgId: uid(), selfDestruct: settings.selfDestruct, timestamp: Date.now() });
 }
 
@@ -1307,7 +1316,13 @@ $('attach-btn').onclick = (e) => {
     e.stopPropagation();
     const isActive = $('attach-menu').classList.toggle('active');
     $('emoji-sticker-popup').classList.remove('active');
-    $('popup-overlay').classList.toggle('active', isActive);
+    if (isActive) {
+        $('popup-overlay').classList.remove('hidden');
+        $('popup-overlay').classList.add('active');
+    } else {
+        $('popup-overlay').classList.remove('active');
+        setTimeout(() => $('popup-overlay').classList.add('hidden'), 300);
+    }
 };
 
 $('attach-doc').onclick = () => { $('file-input').accept = '*'; $('file-input').click(); closePopups(); };
@@ -1318,6 +1333,11 @@ function closePopups() {
     $('attach-menu').classList.remove('active');
     $('emoji-sticker-popup').classList.remove('active');
     $('popup-overlay').classList.remove('active');
+    setTimeout(() => {
+        if (!$('attach-menu').classList.contains('active') && !$('emoji-sticker-popup').classList.contains('active')) {
+            $('popup-overlay').classList.add('hidden');
+        }
+    }, 300);
 }
 
 function handleFileSelection(e) {
