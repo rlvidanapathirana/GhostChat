@@ -25,21 +25,33 @@ const $ = id => document.getElementById(id);
 
 // ─── Boot ───
 async function boot() {
-    const agreed = localStorage.getItem('gc_agreed');
-    if (!agreed) { show('terms-modal'); return; }
     await loadSettings();
-    const saved = localStorage.getItem('gc_profile');
-    if (!saved) { show('profile-modal'); return; }
-    myProfile = JSON.parse(saved);
-    applyProfileUI();
     await loadContacts();
     await loadCallLog();
     await loadStories();
-    renderChatList();
-    renderCallLog();
-    renderPeerStories();
-    startPeer();
+    
+    // Check for Join URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinId = urlParams.get('join');
+    if (joinId) {
+        setTimeout(() => {
+            show('newchat-modal');
+            $('newchat-peer-input').value = joinId;
+        }, 1000);
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    const p = localStorage.getItem('gc_profile');
+    if (p) {
+        myProfile = JSON.parse(p);
+        if (!myProfile.isGroup) myProfile.isGroup = false; // ensure prop exists
+        applyProfileUI();
+        startPeer();
+    } else {
+        show('profile-modal');
+    }
 }
+boot();
 
 $('agree-btn').onclick = () => {
     localStorage.setItem('gc_agreed','1');
@@ -85,6 +97,15 @@ $('home-settings-btn').onclick = (e) => {
 document.addEventListener('click', () => $('home-dropdown').classList.add('hidden'));
 
 $('menu-settings').onclick = () => show('settings-modal');
+$('menu-share-profile').onclick = () => {
+    const link = window.location.origin + window.location.pathname + '?join=' + myProfile.customId;
+    if (navigator.share) { 
+        navigator.share({ title: 'Chat with me on GhostChat', text: 'Click this link to chat with me on GhostChat securely!', url: link }); 
+    } else { 
+        navigator.clipboard.writeText(link); 
+        alert('Personal Invite Link copied to clipboard!\n\n' + link); 
+    }
+};
 $('menu-about').onclick = () => {
     $('copyright-year').textContent = `© ${new Date().getFullYear()} RL GhostChat · V`;
     show('about-modal');
@@ -157,13 +178,25 @@ $('update-account-btn').onclick = () => {
     }
 };
 
+function pingContacts() {
+    Object.keys(contacts).forEach(peerId => {
+        if (!connections[peerId]?.open && peerId !== 'GROUP_HOST' && !peerId.startsWith('grp_')) {
+            const conn = peer.connect(peerId, { reliable:true });
+            if (conn) setupConn(conn);
+        }
+    });
+}
+
 // ─── Peer Network ───
 function startPeer() {
     if (peer) {
         peer.destroy();
     }
     peer = new Peer(myProfile.customId, { debug: 1 });
-    peer.on('open', () => console.log('Peer ready:', myProfile.customId));
+    peer.on('open', () => {
+        console.log('Peer ready:', myProfile.customId);
+        pingContacts();
+    });
     peer.on('error', err => {
         if (err.type === 'unavailable-id') {
             if (myProfile.isGroup) {
@@ -186,8 +219,6 @@ function startPeer() {
 function setupConn(conn) {
     conn.on('open', () => {
         connections[conn.peer] = conn;
-        // Always open chat for this peer when connection opens
-        openChat(conn.peer);
         conn.send({ type:'profile-sync', profile:myProfile });
         sysMsg(`${conn.peer} connected`);
         if (isHost && Object.keys(connections).length > 1) {
@@ -485,7 +516,21 @@ function renderChatList() {
                 </div>
             </div>
         `;
-        groupLi.onclick = () => openGroupHostChat();
+        let groupPressT, isGroupLongPress = false;
+        groupLi.addEventListener('pointerdown', e => {
+            isGroupLongPress = false;
+            groupPressT = setTimeout(() => {
+                isGroupLongPress = true;
+                showGroupContextMenu(e);
+            }, 500);
+        });
+        groupLi.addEventListener('pointerup', ()=>clearTimeout(groupPressT));
+        groupLi.addEventListener('pointerleave', ()=>clearTimeout(groupPressT));
+        
+        groupLi.onclick = (e) => {
+            if (isGroupLongPress) { e.preventDefault(); return; }
+            openGroupHostChat();
+        };
         list.appendChild(groupLi);
     }
 
@@ -510,12 +555,19 @@ function renderChatList() {
                 </div>
             </div>`;
         
-        let pressT;
-        li.addEventListener('pointerdown', e => { pressT=setTimeout(()=>showChatContextMenu(e,peerId),500); });
+        let pressT, isLongPress = false;
+        li.addEventListener('pointerdown', e => { 
+            isLongPress = false;
+            pressT = setTimeout(()=>{ 
+                isLongPress = true;
+                showChatContextMenu(e,peerId); 
+            }, 500); 
+        });
         li.addEventListener('pointerup', ()=>clearTimeout(pressT));
         li.addEventListener('pointerleave', ()=>clearTimeout(pressT));
         
-        li.onclick = () => {
+        li.onclick = (e) => {
+            if (isLongPress) { e.preventDefault(); return; }
             // Always open the chat screen first
             openChat(peerId);
             // If not connected, try to connect in background
@@ -567,6 +619,42 @@ function showChatContextMenu(e, peerId) {
     }; 
     pop.appendChild(d);
     const x=Math.min(e.clientX,window.innerWidth-200), y=Math.max(e.clientY-30,10);
+    pop.style.left=x+'px'; pop.style.top=y+'px'; pop.classList.remove('hidden');
+}
+
+function showGroupContextMenu(e) {
+    e.preventDefault(); e.stopPropagation();
+    const pop = $('reaction-popup');
+    pop.innerHTML = '';
+    
+    const c1 = document.createElement('span'); c1.className='r-action'; c1.innerHTML='<i class="fa-solid fa-copy"></i> Copy Group Code';
+    c1.onclick = () => { navigator.clipboard.writeText(myProfile.customId); pop.classList.add('hidden'); alert('Copied Group Code:\n' + myProfile.customId); };
+    pop.appendChild(c1);
+
+    const c2 = document.createElement('span'); c2.className='r-action'; c2.innerHTML='<i class="fa-solid fa-share-nodes"></i> Share Invite Link';
+    c2.onclick = () => { 
+        const link = window.location.origin + window.location.pathname + '?join=' + myProfile.customId;
+        if (navigator.share) { navigator.share({ title: 'Join my GhostChat Group', url: link }); }
+        else { navigator.clipboard.writeText(link); alert('Invite Link copied!'); }
+        pop.classList.add('hidden'); 
+    };
+    pop.appendChild(c2);
+
+    const d = document.createElement('span'); d.className='r-action del'; d.innerHTML='<i class="fa-solid fa-trash"></i> Disband Group';
+    d.onclick = () => {
+        if (confirm('Are you sure you want to disband this group?')) {
+            myProfile.isGroup = false;
+            myProfile.groupName = '';
+            myProfile.groupMembers = [];
+            localStorage.setItem('gc_profile', JSON.stringify(myProfile));
+            startPeer();
+            renderChatList();
+        }
+        pop.classList.add('hidden');
+    };
+    pop.appendChild(d);
+
+    const x = Math.min(e.clientX, window.innerWidth - 200), y = Math.max(e.clientY - 30, 10);
     pop.style.left=x+'px'; pop.style.top=y+'px'; pop.classList.remove('hidden');
 }
 
