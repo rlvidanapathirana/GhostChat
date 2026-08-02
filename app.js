@@ -1087,6 +1087,10 @@ function renderMsg(data, align, senderName, peerId) {
     else if (data.type==='image') { const i=document.createElement('img'); i.src=data.content; body.appendChild(i); }
     else if (data.type==='video') { const v=document.createElement('video'); v.src=data.content; v.controls=true; body.appendChild(v); }
     else if (data.type==='audio') { body.appendChild(buildAudioPlayer(data.content)); }
+    else if (data.type==='sticker') { 
+        div.classList.add('sticker');
+        const i=document.createElement('img'); i.src=data.content; body.appendChild(i); 
+    }
     div.appendChild(body);
 
     const meta=document.createElement('div'); meta.className='msg-meta';
@@ -1177,6 +1181,76 @@ function deleteMsgForAll(msgId) {
     const p={type:'delete-msg',msgId}; broadcast(p);
     const el=$(`msg-${msgId}`); if (el) el.innerHTML='<em style="opacity:.4">🚫 Deleted for everyone</em>';
     deleteFromHistory(currentPeerId,msgId);
+}
+
+// ─── Emojis & Stickers ───
+$('emoji-btn').onclick = (e) => {
+    e.stopPropagation();
+    $('emoji-sticker-popup').classList.toggle('active');
+};
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#emoji-sticker-popup') && e.target.closest('#emoji-btn') === null) {
+        $('emoji-sticker-popup').classList.remove('active');
+    }
+});
+
+document.querySelectorAll('.es-tab').forEach(btn => {
+    btn.onclick = () => {
+        document.querySelectorAll('.es-tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.es-content').forEach(c => c.classList.add('hidden'));
+        btn.classList.add('active');
+        $(`es-content-${btn.dataset.tab}`).classList.remove('hidden');
+    };
+});
+
+document.querySelector('emoji-picker').addEventListener('emoji-click', event => {
+    msgInput.value += event.detail.unicode;
+    msgInput.dispatchEvent(new Event('input')); // trigger typing/button logic
+});
+
+// Hardcoded Animated Emojis & Stickers
+const animEmojis = [
+    'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Smiling%20Face%20with%20Heart-Eyes.png',
+    'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Face%20with%20Tears%20of%20Joy.png',
+    'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Rolling%20on%20the%20Floor%20Laughing.png',
+    'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Pleading%20Face.png',
+    'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Red%20Heart.png',
+    'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Fire.png',
+    'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Star-Struck.png',
+    'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Exploding%20Head.png'
+];
+
+const stickers = [
+    'https://media.tenor.com/images/41f022ef7a6e12fbccdfb776269eb1d2/tenor.gif',
+    'https://media.tenor.com/images/3f28328124508e647b0a70e7eaf7120a/tenor.gif',
+    'https://media.tenor.com/images/2b7e19313cc0fef7fbe0ce7b26917f6e/tenor.gif',
+    'https://media.tenor.com/images/eb690324a35017dfce7ce73df64b150c/tenor.gif',
+    'https://media.tenor.com/images/84dc5ab70bbaeb67b7fce6f3a6773323/tenor.gif',
+    'https://media.tenor.com/images/7d04db9b9c9cd59837a28189c44569c7/tenor.gif'
+];
+
+function loadStickers() {
+    const aeGrid = $('anim-emoji-grid');
+    animEmojis.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url; img.className = 'sticker-item';
+        img.onclick = () => sendSticker(url);
+        aeGrid.appendChild(img);
+    });
+
+    const sGrid = $('sticker-grid');
+    stickers.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url; img.className = 'sticker-item';
+        img.onclick = () => sendSticker(url);
+        sGrid.appendChild(img);
+    });
+}
+loadStickers();
+
+function sendSticker(url) {
+    $('emoji-sticker-popup').classList.remove('active');
+    sendPayload({ type: 'sticker', content: url, msgId: uid(), selfDestruct: settings.selfDestruct, timestamp: Date.now() });
 }
 
 // ─── File Attachment & Menu ───
