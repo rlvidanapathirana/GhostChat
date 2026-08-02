@@ -601,9 +601,14 @@ function renderChatList() {
             // Always open the chat screen first
             openChat(peerId);
             // If not connected or connection dead, try to connect in background
-            if (!connections[peerId] || !connections[peerId].open) {
+            const c = connections[peerId];
+            if (!c || (!c.open && !c._connecting)) {
                 const conn = peer.connect(peerId, { reliable:true });
                 if (conn) {
+                    conn._connecting = true;
+                    conn.on('open', () => conn._connecting = false);
+                    conn.on('error', () => conn._connecting = false);
+                    conn.on('close', () => conn._connecting = false);
                     connections[peerId] = conn;
                     isHost = false;
                     setupConn(conn);
@@ -1411,13 +1416,20 @@ function sendPayload(payload) {
         if (c && c.open) {
             c.send(payload);
         } else {
+            if (c && c._connecting) {
+                sysMsg('Connecting... Message will send automatically.');
+                c.on('open', () => c.send(payload));
+                return;
+            }
             sysMsg('Not connected. Attempting to reconnect...');
             const conn = peer.connect(currentPeerId, { reliable:true });
             if (conn) {
+                conn._connecting = true;
+                conn.on('open', () => { conn._connecting = false; conn.send(payload); });
+                conn.on('error', () => conn._connecting = false);
+                conn.on('close', () => conn._connecting = false);
                 connections[currentPeerId] = conn;
                 setupConn(conn);
-                // Queue message to send when open
-                conn.on('open', () => conn.send(payload));
             }
             return;
         }
