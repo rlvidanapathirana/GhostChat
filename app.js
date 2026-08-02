@@ -194,6 +194,7 @@ function pingContacts() {
 function startPeer() {
     if (peer) {
         peer.destroy();
+        Object.keys(connections).forEach(k => delete connections[k]);
     }
     peer = new Peer(myProfile.customId, { debug: 1 });
     peer.on('open', () => {
@@ -589,8 +590,8 @@ function renderChatList() {
             if (isLongPress) { e.preventDefault(); return; }
             // Always open the chat screen first
             openChat(peerId);
-            // If not connected, try to connect in background
-            if (!connections[peerId]) {
+            // If not connected or connection dead, try to connect in background
+            if (!connections[peerId] || !connections[peerId].open) {
                 const conn = peer.connect(peerId, { reliable:true });
                 if (conn) {
                     connections[peerId] = conn;
@@ -1385,8 +1386,19 @@ function sendPayload(payload) {
         broadcast(payload);
     } else {
         const c = connections[currentPeerId];
-        if (c && c.open) c.send(payload);
-        else return alert('Not connected!');
+        if (c && c.open) {
+            c.send(payload);
+        } else {
+            sysMsg('Not connected. Attempting to reconnect...');
+            const conn = peer.connect(currentPeerId, { reliable:true });
+            if (conn) {
+                connections[currentPeerId] = conn;
+                setupConn(conn);
+                // Queue message to send when open
+                conn.on('open', () => conn.send(payload));
+            }
+            return;
+        }
     }
     renderMsg(payload,'sent','Me',currentPeerId);
     saveToHistory(currentPeerId,payload,'sent','Me');
