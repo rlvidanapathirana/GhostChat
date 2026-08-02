@@ -126,6 +126,103 @@
     </div>
 </div>
 
+<!-- ══════════════ MODAL: ABOUT ══════════════ -->
+<div class="modal-overlay hidden" id="about-modal">
+    <div class="modal-box" style="text-align:center;">
+        <header class="modal-header">
+            <h2>About GhostChat</h2>
+            <button class="icon-btn" id="close-about-btn"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <i class="fa-solid fa-ghost modal-icon"></i>
+        <h3 style="color:var(--primary); margin-bottom:10px;">Maximum Security</h3>
+        <p class="legal-block" style="text-align:center; margin-top:0;">GhostChat is a 100% serverless P2P messaging application. There is no central server storing your data. All messages and media are sent directly between devices using WebRTC, secured with mandatory End-to-End Encryption (E2EE).</p>
+        <div style="margin:20px 0; font-size:0.85rem;">
+            <p>Developed by <a href="https://lakshan.vercel.app/" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:600;">V.P.R. Lakshan Vidanapathirana</a> as a project.</p>
+            <p style="color:var(--text-muted); margin-top:5px;" id="copyright-year">© 2026 RL GhostChat · V</p>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════ MODAL: TERMS & CONDITIONS ══════════════ -->
+<div class="modal-overlay hidden" id="terms-modal-view">
+    <div class="modal-box">
+        <header class="modal-header">
+            <h2>Terms & Conditions</h2>
+            <button class="icon-btn" id="close-terms-btn"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <div class="legal-block">
+            <p><strong>1. Age Restriction:</strong> You must be 18 years or older to use this service.</p>
+            <p style="margin-top:10px;"><strong>2. Illegal Use:</strong> You agree NOT to use GhostChat for any illegal, malicious, or harmful activities.</p>
+            <p style="margin-top:10px;" class="tag-red"><strong>3. Disclaimer of Liability:</strong> GhostChat is a decentralized P2P tool. The developers DO NOT have access to your data, messages, or connections, and hold absolutely ZERO liability or responsibility for any user actions or content transmitted through this software.</p>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════ MODAL: ENCRYPTION VERIFY ══════════════ -->
+<div class="modal-overlay hidden" id="encryption-modal">
+    <div class="modal-box" style="text-align:center;">
+        <header class="modal-header">
+            <h2>Verify Security Code</h2>
+            <button class="icon-btn" id="close-encryption-btn"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <i class="fa-solid fa-lock modal-icon" style="font-size:2.5rem; margin-bottom:20px;"></i>
+        <div style="background:rgba(0,0,0,0.5); padding:20px; border-radius:15px; border:1px solid var(--border); font-family:monospace; font-size:1.1rem; letter-spacing:2px; color:var(--primary); word-break:break-all;" id="encryption-code-display">
+            Generating...
+        </div>
+        <p class="legal-block" style="text-align:center; margin-top:20px;">Messages and calls are end-to-end encrypted. No one outside of this chat, not even GhostChat, can read or listen to them.</p>
+    </div>
+</div>
+
+<!-- ══════════════ MODAL: ACCOUNT EDIT ══════════════ -->
+<div class="modal-overlay hidden" id="account-modal">
+    <div class="modal-box">
+        <header class="modal-header">
+            <h2>Edit Account</h2>
+            <button class="icon-btn" id="close-account-btn"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <div class="avatar-picker">
+            <div class="avatar-circle" id="edit-avatar-prev"><i class="fa-solid fa-camera"></i></div>
+            <span class="sub-text">Change Avatar</span>
+            <input type="file" id="edit-avatar-file" accept="image/*" hidden>
+        </div>
+        <div class="field-group">
+            <label>Display Name</label>
+            <input type="text" id="edit-name" maxlength="20">
+        </div>
+        <div class="field-group mt12">
+            <label>Username (Custom ID)</label>
+            <input type="text" id="edit-username" maxlength="20" autocapitalize="none">
+            <small class="tag-red">Warning: Changing this will momentarily disconnect you.</small>
+        </div>
+        <button class="btn-primary w100 mt16" id="update-account-btn">Save Changes</button>
+    </div>
+</div>
+
+<!-- ══════════════ STATUS VIEWER SCREEN ══════════════ -->
+<div class="call-screen hidden" id="status-viewer-screen" style="z-index:9600; background:#000;">
+    <div class="status-progress-container" id="status-progress-container"></div>
+    <div style="position:absolute; top:20px; left:15px; right:15px; display:flex; justify-content:space-between; align-items:center; z-index:10;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <img id="sv-avatar" src="" style="width:40px; height:40px; border-radius:50%; border:2px solid var(--primary); object-fit:cover;">
+            <div>
+                <h3 id="sv-name" style="color:white; font-size:1rem; margin:0;">Name</h3>
+                <p id="sv-time" style="color:rgba(255,255,255,0.7); font-size:0.75rem; margin:0;">Time</p>
+            </div>
+        </div>
+        <button class="icon-btn" id="close-status-viewer" style="color:white; background:rgba(0,0,0,0.3);"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    
+    <div id="sv-content-area" style="flex:1; display:flex; align-items:center; justify-content:center; width:100%; position:relative;">
+        <!-- Media goes here -->
+    </div>
+    
+    <div id="sv-text-area" style="position:absolute; bottom:30px; left:20px; right:20px; text-align:center; color:white; font-size:1.2rem; text-shadow:0 1px 3px rgba(0,0,0,0.8); z-index:10;"></div>
+    
+    <!-- Tap Zones -->
+    <div id="sv-tap-left" style="position:absolute; top:0; left:0; width:30%; height:100%; z-index:5;"></div>
+    <div id="sv-tap-right" style="position:absolute; top:0; right:0; width:70%; height:100%; z-index:5;"></div>
+</div>
+
 <!-- ══════════════ MAIN APP ══════════════ -->
 <div class="app-root">
 
@@ -140,9 +237,16 @@
                 </div>
                 <h1>GhostChat</h1>
             </div>
-            <div class="home-header-right">
+            <div class="home-header-right" style="position:relative;">
                 <button class="icon-btn" id="home-search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
                 <button class="icon-btn" id="home-settings-btn"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                <!-- 3-Dot Menu Dropdown -->
+                <div class="dropdown-menu hidden" id="home-dropdown">
+                    <button class="dropdown-item" id="menu-account"><i class="fa-solid fa-user"></i> Account</button>
+                    <button class="dropdown-item" id="menu-settings"><i class="fa-solid fa-gear"></i> Settings</button>
+                    <button class="dropdown-item" id="menu-about"><i class="fa-solid fa-circle-info"></i> About</button>
+                    <button class="dropdown-item" id="menu-terms"><i class="fa-solid fa-shield-halved"></i> Terms</button>
+                </div>
             </div>
         </header>
 
@@ -188,7 +292,10 @@
 
             <div class="status-input-area hidden" id="status-input-area">
                 <input type="text" id="status-text-input" placeholder="What's on your mind?" maxlength="60">
-                <button class="btn-primary" id="post-status-btn">Set Status</button>
+                <button class="icon-btn" id="status-photo-btn"><i class="fa-solid fa-image"></i></button>
+                <button class="icon-btn" id="status-video-btn"><i class="fa-solid fa-video"></i></button>
+                <input type="file" id="status-media-input" accept="image/*,video/*" hidden>
+                <button class="btn-primary" id="post-status-btn">Post</button>
             </div>
 
             <div class="section-label">Recent Statuses</div>

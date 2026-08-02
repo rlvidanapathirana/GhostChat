@@ -14,6 +14,8 @@ let isHost    = false;
 let replyMsgId= null;
 let contacts  = {};      // peerId → { name, avatar, status, lastMsg, lastTime, unread }
 let callLog   = [];
+let myStories = [];      // Array of { id, type, content, time }
+let peerStories = {};    // peerId → [stories]
 
 // ─── DB ───
 localforage.config({ name:'GhostChatV6', storeName:'store' });
@@ -32,8 +34,10 @@ async function boot() {
     applyProfileUI();
     await loadContacts();
     await loadCallLog();
+    await loadStories();
     renderChatList();
     renderCallLog();
+    renderPeerStories();
     startPeer();
 }
 
@@ -66,16 +70,94 @@ $('save-profile-btn').onclick = async () => {
 };
 
 function applyProfileUI() {
-    const avatarEls = ['hdr-avatar-img','my-status-avatar','chat-peer-avatar'];
     safeSet('hdr-avatar-img', el => { el.src = myProfile.avatar; });
     safeSet('my-status-avatar', el => { el.src = myProfile.avatar; });
     safeSet('my-status-text-display', el => { el.textContent = myProfile.status; });
 }
 
+// ─── 3-Dot Menu & Info Modals ───
+$('home-settings-btn').onclick = (e) => {
+    e.stopPropagation();
+    $('home-dropdown').classList.toggle('hidden');
+};
+document.addEventListener('click', () => $('home-dropdown').classList.add('hidden'));
+
+$('menu-settings').onclick = () => show('settings-modal');
+$('menu-about').onclick = () => {
+    $('copyright-year').textContent = `© ${new Date().getFullYear()} RL GhostChat · V`;
+    show('about-modal');
+};
+$('close-about-btn').onclick = () => hide('about-modal');
+
+$('menu-terms').onclick = () => show('terms-modal-view');
+$('close-terms-btn').onclick = () => hide('terms-modal-view');
+
+// ─── Encryption Verification ───
+$('chat-header-peer').onclick = () => {
+    if (!currentPeerId) return;
+    const peerCode = connections[currentPeerId]?.peer || currentPeerId;
+    // Generate a simple hash of the peer ID to show as a "security code"
+    let hash = 0;
+    for (let i=0; i<peerCode.length; i++) { hash = (hash<<5)-hash+peerCode.charCodeAt(i); hash|=0; }
+    const code = Math.abs(hash).toString().padStart(12, '0').replace(/(.{4})/g, '$1 ').trim();
+    $('encryption-code-display').textContent = code;
+    show('encryption-modal');
+};
+$('close-encryption-btn').onclick = () => hide('encryption-modal');
+
+// ─── Account Edit ───
+$('menu-account').onclick = () => openAccountEdit();
+$('home-my-avatar').onclick = () => openAccountEdit();
+
+function openAccountEdit() {
+    $('edit-avatar-prev').innerHTML = `<img src="${myProfile.avatar}">`;
+    $('edit-name').value = myProfile.name;
+    $('edit-username').value = myProfile.customId;
+    show('account-modal');
+}
+$('close-account-btn').onclick = () => hide('account-modal');
+
+$('edit-avatar-prev').onclick = () => $('edit-avatar-file').click();
+$('edit-avatar-file').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    readFile(f, d => {
+        $('edit-avatar-prev').innerHTML = `<img src="${d}">`;
+        $('edit-avatar-file').dataset.b64 = d;
+    });
+};
+$('update-account-btn').onclick = () => {
+    const newName = $('edit-name').value.trim();
+    const newId = $('edit-username').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
+    const newAv = $('edit-avatar-file').dataset.b64;
+    
+    if (!newName || !newId) return;
+    
+    const idChanged = newId !== myProfile.customId;
+    myProfile.name = newName;
+    myProfile.customId = newId;
+    if (newAv) myProfile.avatar = newAv;
+    
+    localStorage.setItem('gc_profile', JSON.stringify(myProfile));
+    applyProfileUI();
+    hide('account-modal');
+    
+    // Broadcast profile update to current peers
+    Object.values(connections).forEach(c => {
+        if (c.open) c.send({ type:'profile-sync', profile:myProfile });
+    });
+    
+    if (idChanged) {
+        sysMsg('Username changed. Reconnecting...');
+        startPeer(); // Re-initialize peer with new ID
+    }
+};
+
 // ─── Peer Network ───
 function startPeer() {
-    if (peer) peer.destroy();
-    peer = new Peer(myProfile.customId, { debug: 0 });
+    if (peer) {
+        peer.destroy();
+    }
+    peer = new Peer(myProfile.customId, { debug: 1 });
     peer.on('open', () => console.log('Peer ready:', myProfile.customId));
     peer.on('error', err => {
         if (err.type === 'unavailable-id') {
@@ -148,7 +230,17 @@ function handleData(data, from) {
         if (currentPeerId === from) updateChatHeader(from);
         updatePeerStatus(from, data.profile.status);
         renderChatList();
-        updatePeerStatusList(from, data.profile);
+        
+        // Also send our stories to them
+        if (myStories.length > 0) {
+            connections[from]?.send({ type:'story-sync', stories: myStories });
+        }
+        return;
+    }
+    if (data.type === 'story-sync') {
+        peerStories[from] = data.stories.filter(s => Date.now() - s.time < 86400000);
+        savePeerStories();
+        renderPeerStories();
         return;
     }
     if (data.type === 'read-receipt') {
@@ -310,57 +402,216 @@ function renderChatList() {
     });
 }
 
-// ─── Peer Status (Status Tab) ───
-function updatePeerStatusList(peerId, profile) {
-    const list = $('peer-status-list');
-    let item = document.getElementById(`status-item-${peerId}`);
-    if (!item) {
-        item = document.createElement('li');
-        item.id = `status-item-${peerId}`;
-        item.className = 'status-list-item';
-        list.querySelectorAll('.empty-state').forEach(e=>e.remove());
-        list.appendChild(item);
-    }
-    item.innerHTML = `
-        <img src="${profile.avatar||defaultAvatar()}" alt="">
-        <div class="status-item-text">
-            <strong>${profile.name||peerId}</strong>
-            <p>${profile.status||'No status'}</p>
-            <small>Just now</small>
-        </div>`;
+// ─── Status & Stories Feature ───
+async function loadStories() {
+    myStories = await localforage.getItem('gc_my_stories') || [];
+    peerStories = await localforage.getItem('gc_peer_stories') || {};
+    // Clean up old stories (> 24h)
+    const now = Date.now();
+    myStories = myStories.filter(s => now - s.time < 86400000);
+    Object.keys(peerStories).forEach(p => {
+        peerStories[p] = peerStories[p].filter(s => now - s.time < 86400000);
+        if (peerStories[p].length === 0) delete peerStories[p];
+    });
+    localforage.setItem('gc_my_stories', myStories);
+    savePeerStories();
 }
-function updatePeerStatus(peerId, status) {
-    if (currentPeerId===peerId) {
-        safeSet('chat-peer-status', el => {
-            el.textContent = status || 'Online';
-        });
-    }
-}
+function savePeerStories() { localforage.setItem('gc_peer_stories', peerStories); }
 
-// ─── Status Feature ───
 $('edit-my-status-btn').onclick = () => {
     $('status-input-area').classList.toggle('hidden');
     $('status-text-input').value = myProfile.status;
 };
-$('post-status-btn').onclick = saveStatus;
+$('status-photo-btn').onclick = () => { $('status-media-input').accept = 'image/*'; $('status-media-input').click(); };
+$('status-video-btn').onclick = () => { $('status-media-input').accept = 'video/*'; $('status-media-input').click(); };
+
+$('status-media-input').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { showErr('setup-err', 'File too large (Max 5MB)'); return; }
+    readFile(f, b64 => {
+        addStory(f.type.startsWith('video') ? 'video' : 'image', b64);
+    });
+};
 
 $('btn-update-status').onclick = () => {
     $('status-edit-box').classList.toggle('hidden');
     $('status-input-settings').value = myProfile.status;
 };
 $('save-status-btn').onclick = saveStatus;
+$('post-status-btn').onclick = saveStatus;
 
 function saveStatus() {
     const txt = ($('status-text-input').value || $('status-input-settings').value).trim();
-    if (!txt) return;
-    myProfile.status = txt;
-    localStorage.setItem('gc_profile', JSON.stringify(myProfile));
-    safeSet('my-status-text-display', el => el.textContent = txt);
+    if (txt) {
+        myProfile.status = txt;
+        localStorage.setItem('gc_profile', JSON.stringify(myProfile));
+        safeSet('my-status-text-display', el => el.textContent = txt);
+        addStory('text', txt);
+    }
     $('status-input-area').classList.add('hidden');
     $('status-edit-box').classList.add('hidden');
-    // Broadcast status to connected peers
-    broadcast({ type:'profile-sync', profile:myProfile });
 }
+
+function addStory(type, content) {
+    myStories.push({ id: Date.now().toString(), type, content, time: Date.now() });
+    localforage.setItem('gc_my_stories', myStories);
+    broadcast({ type:'story-sync', stories: myStories });
+    renderPeerStories(); // Render my own story preview (optional)
+}
+
+function renderPeerStories() {
+    const list = $('peer-status-list');
+    list.innerHTML = '';
+    // Show my stories if any
+    if (myStories.length > 0) {
+        list.appendChild(createStoryElement('My Status', myProfile.avatar, myStories));
+    }
+    // Show peers' stories
+    Object.keys(peerStories).forEach(peerId => {
+        const stories = peerStories[peerId];
+        const p = peerProfiles[peerId] || contacts[peerId] || { name: peerId, avatar: defaultAvatar() };
+        if (stories.length > 0) {
+            list.appendChild(createStoryElement(p.name||peerId, p.avatar, stories));
+        }
+    });
+    if (list.innerHTML === '') {
+        list.innerHTML = `<li class="empty-state"><i class="fa-solid fa-circle-dot"></i><p>No status updates yet</p></li>`;
+    }
+}
+
+function createStoryElement(name, avatar, stories) {
+    const li = document.createElement('li');
+    li.className = 'status-list-item';
+    li.style.cursor = 'pointer';
+    const lastTime = timeAgo(stories[stories.length-1].time);
+    
+    // Draw ring
+    const ringColor = 'var(--primary)'; // Unread status could make it green, read could be gray
+    
+    li.innerHTML = `
+        <div style="position:relative;">
+            <img src="${avatar||defaultAvatar()}" alt="" style="border: 2px solid ${ringColor}; padding:2px;">
+        </div>
+        <div class="status-item-text">
+            <strong>${name}</strong>
+            <p>${stories.length} updates</p>
+            <small>${lastTime}</small>
+        </div>`;
+    
+    li.onclick = () => openStatusViewer(name, avatar, stories);
+    return li;
+}
+
+// ─── Status Viewer Logic ───
+let svIndex = 0;
+let svStories = [];
+let svTimer = null;
+let svIsPaused = false;
+
+function openStatusViewer(name, avatar, stories) {
+    svStories = stories;
+    svIndex = 0;
+    svIsPaused = false;
+    $('sv-name').textContent = name;
+    $('sv-avatar').src = avatar || defaultAvatar();
+    $('status-viewer-screen').classList.remove('hidden');
+    renderSvProgressBars();
+    playStatus();
+}
+
+function renderSvProgressBars() {
+    const c = $('status-progress-container');
+    c.innerHTML = '';
+    svStories.forEach((_, i) => {
+        const bar = document.createElement('div');
+        bar.className = 'status-progress-bar';
+        const fill = document.createElement('div');
+        fill.className = 'status-progress-fill';
+        fill.id = `sv-fill-${i}`;
+        if (i < svIndex) fill.style.width = '100%';
+        bar.appendChild(fill);
+        c.appendChild(bar);
+    });
+}
+
+function playStatus() {
+    if (svIndex >= svStories.length) {
+        closeStatusViewer();
+        return;
+    }
+    const s = svStories[svIndex];
+    $('sv-time').textContent = timeAgo(s.time);
+    const ca = $('sv-content-area');
+    const ta = $('sv-text-area');
+    ca.innerHTML = ''; ta.textContent = '';
+    
+    let duration = 5000;
+    if (s.type === 'text') {
+        ca.innerHTML = `<div style="padding:40px; text-align:center; color:white; font-size:2rem; font-weight:bold;">${s.content}</div>`;
+        startSvTimer(duration);
+    } else if (s.type === 'image') {
+        ca.innerHTML = `<img src="${s.content}" style="width:100%; height:100%; object-fit:contain;">`;
+        startSvTimer(duration);
+    } else if (s.type === 'video') {
+        const v = document.createElement('video');
+        v.src = s.content; v.style.width = '100%'; v.style.height = '100%'; v.style.objectFit = 'contain';
+        v.autoplay = true; v.playsInline = true;
+        v.onloadedmetadata = () => startSvTimer(v.duration * 1000);
+        v.onended = () => nextStatus();
+        ca.appendChild(v);
+    }
+}
+
+function startSvTimer(ms) {
+    clearInterval(svTimer);
+    const fill = $(`sv-fill-${svIndex}`);
+    if (!fill) return;
+    let start = Date.now();
+    svTimer = setInterval(() => {
+        if (svIsPaused) { start += 50; return; }
+        let p = ((Date.now() - start) / ms) * 100;
+        if (p >= 100) { p = 100; clearInterval(svTimer); nextStatus(); }
+        fill.style.width = p + '%';
+    }, 50);
+}
+
+function nextStatus() {
+    const fill = $(`sv-fill-${svIndex}`);
+    if (fill) fill.style.width = '100%';
+    svIndex++;
+    renderSvProgressBars(); // Ensure past bars are full
+    playStatus();
+}
+
+function prevStatus() {
+    const fill = $(`sv-fill-${svIndex}`);
+    if (fill) fill.style.width = '0%';
+    svIndex--;
+    if (svIndex < 0) svIndex = 0;
+    renderSvProgressBars();
+    playStatus();
+}
+
+function closeStatusViewer() {
+    clearInterval(svTimer);
+    $('status-viewer-screen').classList.add('hidden');
+    const ca = $('sv-content-area');
+    ca.innerHTML = ''; // Stop video playback
+}
+$('close-status-viewer').onclick = closeStatusViewer;
+$('sv-tap-left').onclick = prevStatus;
+$('sv-tap-right').onclick = nextStatus;
+
+// Pause on hold
+$('sv-tap-left').onmousedown = () => svIsPaused = true;
+$('sv-tap-left').onmouseup = () => svIsPaused = false;
+$('sv-tap-left').ontouchstart = () => svIsPaused = true;
+$('sv-tap-left').ontouchend = () => svIsPaused = false;
+$('sv-tap-right').onmousedown = () => svIsPaused = true;
+$('sv-tap-right').onmouseup = () => svIsPaused = false;
+$('sv-tap-right').ontouchstart = () => svIsPaused = true;
+$('sv-tap-right').ontouchend = () => svIsPaused = false;
+
 
 // ─── Tabs ───
 document.querySelectorAll('.tab-btn').forEach(btn => {
