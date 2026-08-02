@@ -160,8 +160,8 @@ input, textarea, select { font-family: 'Outfit', sans-serif; }
 #chat-screen.active { transform: translateX(0); pointer-events: auto; }
 #home-screen.pushed  { transform: translateX(-25%); }
 
-/* ── DESKTOP (800px+): side by side ── */
-@media (min-width: 800px) {
+/* ── DESKTOP (992px+): side by side ── */
+@media (min-width: 992px) {
     .app-root { flex-direction: row; }
     /* On desktop, screens are side by side — no transform tricks needed */
     .screen { position: relative; transform: none !important; pointer-events: auto !important; }
@@ -497,7 +497,7 @@ input, textarea, select { font-family: 'Outfit', sans-serif; }
 /* ══════════════════════════════════════
    MOBILE-SPECIFIC TWEAKS
    ══════════════════════════════════════ */
-@media (max-width: 799px) {
+@media (max-width: 991px) {
     /* Make tap targets larger */
     .icon-btn { width: 44px; height: 44px; }
 
