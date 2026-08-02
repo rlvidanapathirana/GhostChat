@@ -201,16 +201,16 @@ function startPeer() {
         pingContacts();
     });
     peer.on('error', err => {
+        console.error('Peer error:', err.type, err);
         if (err.type === 'unavailable-id') {
-            if (myProfile.isGroup) {
-                sysMsg('Group ID taken, please try another name.');
-                myProfile.isGroup = false;
-                localStorage.setItem('gc_profile', JSON.stringify(myProfile));
-                startPeer();
-            } else {
-                show('profile-modal');
-                showErr('setup-err',`"${myProfile.customId}" is taken. Choose another.`);
-            }
+            $('setup-screen').classList.add('hidden');
+            $('id-taken-modal').classList.remove('hidden');
+            $('taken-id-display').textContent = myProfile.customId;
+        } else if (err.type === 'peer-unavailable') {
+            sysMsg('Contact is currently offline.');
+        } else {
+            $('connection-status').innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Disconnected.`;
+            $('connection-status').className = 'offline';
         }
     });
     peer.on('connection', conn => { 
@@ -361,10 +361,25 @@ function handleData(data, from) {
         }
         return;
     }
+    if (data.type === 'request-stories') {
+        if (myStories.length > 0) {
+            connections[from]?.send({ type:'story-sync', stories: myStories });
+        }
+        return;
+    }
     if (data.type === 'story-sync') {
         peerStories[from] = data.stories.filter(s => Date.now() - s.time < 86400000);
         savePeerStories();
         renderPeerStories();
+        return;
+    }
+    if (data.type === 'delete-story') {
+        if (peerStories[from]) {
+            peerStories[from] = peerStories[from].filter(s => s.id !== data.id);
+            if (peerStories[from].length === 0) delete peerStories[from];
+            savePeerStories();
+            renderPeerStories();
+        }
         return;
     }
     if (data.type === 'read-receipt') {
@@ -765,7 +780,18 @@ function createStoryElement(name, avatar, stories) {
     return li;
 }
 
-// ─── Status Viewer Logic ───
+// ─── Username Collision Handler ───
+$('btn-save-new-id').onclick = () => {
+    const v = $('new-id-input').value.trim();
+    if (!v || v.length < 3) return alert('Username must be at least 3 characters.');
+    
+    myProfile.customId = v;
+    localStorage.setItem('gc_profile', JSON.stringify(myProfile));
+    $('id-taken-modal').classList.add('hidden');
+    startPeer(); // Re-initialize with new ID
+};
+
+// ─── Contacts & Chat Logic ───
 let svIndex = 0;
 let svStories = [];
 let svTimer = null;
@@ -777,10 +803,28 @@ function openStatusViewer(name, avatar, stories) {
     svIsPaused = false;
     $('sv-name').textContent = name;
     $('sv-avatar').src = avatar || defaultAvatar();
+    
+    if (name === 'My Status') {
+        $('delete-status-btn').classList.remove('hidden');
+    } else {
+        $('delete-status-btn').classList.add('hidden');
+    }
+    
     $('status-viewer-screen').classList.remove('hidden');
     renderSvProgressBars();
     playStatus();
 }
+
+$('delete-status-btn').onclick = () => {
+    if (confirm('Delete this status?')) {
+        const s = svStories[svIndex];
+        myStories = myStories.filter(x => x.id !== s.id);
+        localforage.setItem('gc_my_stories', myStories);
+        broadcast({ type: 'delete-story', id: s.id });
+        renderPeerStories();
+        closeStatusViewer();
+    }
+};
 
 function renderSvProgressBars() {
     const c = $('status-progress-container');
@@ -886,7 +930,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         
         // Auto-request statuses when opening status tab
         if (btn.dataset.tab === 'status' && !myProfile.isGroup) {
-            broadcast({ type:'profile-sync', profile:myProfile });
+            broadcast({ type:'request-stories' });
         }
     };
 });
@@ -1186,11 +1230,15 @@ function deleteMsgForAll(msgId) {
 // ─── Emojis & Stickers ───
 $('emoji-btn').onclick = (e) => {
     e.stopPropagation();
-    $('emoji-sticker-popup').classList.toggle('active');
+    const isActive = $('emoji-sticker-popup').classList.toggle('active');
+    $('attach-menu').classList.remove('active');
+    $('popup-overlay').classList.toggle('active', isActive);
 };
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('#emoji-sticker-popup') && e.target.closest('#emoji-btn') === null) {
+    if (!e.target.closest('#emoji-sticker-popup') && !e.target.closest('#attach-menu') && e.target.closest('#emoji-btn') === null && e.target.closest('#attach-btn') === null) {
         $('emoji-sticker-popup').classList.remove('active');
+        $('attach-menu').classList.remove('active');
+        $('popup-overlay').classList.remove('active');
     }
 });
 
@@ -1250,23 +1298,27 @@ loadStickers();
 
 function sendSticker(url) {
     $('emoji-sticker-popup').classList.remove('active');
+    $('popup-overlay').classList.remove('active');
     sendPayload({ type: 'sticker', content: url, msgId: uid(), selfDestruct: settings.selfDestruct, timestamp: Date.now() });
 }
 
 // ─── File Attachment & Menu ───
 $('attach-btn').onclick = (e) => {
     e.stopPropagation();
-    $('attach-menu').classList.toggle('active');
+    const isActive = $('attach-menu').classList.toggle('active');
+    $('emoji-sticker-popup').classList.remove('active');
+    $('popup-overlay').classList.toggle('active', isActive);
 };
-document.addEventListener('click', (e) => {
-    if (!e.target.closest('#attach-menu') && e.target.closest('#attach-btn') === null) {
-        $('attach-menu').classList.remove('active');
-    }
-});
 
-$('attach-doc').onclick = () => { $('file-input').accept = '*'; $('file-input').click(); $('attach-menu').classList.remove('active'); };
-$('attach-gal').onclick = () => { $('file-input').accept = 'image/*,video/*'; $('file-input').click(); $('attach-menu').classList.remove('active'); };
-$('attach-cam').onclick = () => { $('camera-input').click(); $('attach-menu').classList.remove('active'); };
+$('attach-doc').onclick = () => { $('file-input').accept = '*'; $('file-input').click(); closePopups(); };
+$('attach-gal').onclick = () => { $('file-input').accept = 'image/*,video/*'; $('file-input').click(); closePopups(); };
+$('attach-cam').onclick = () => { $('camera-input').click(); closePopups(); };
+
+function closePopups() {
+    $('attach-menu').classList.remove('active');
+    $('emoji-sticker-popup').classList.remove('active');
+    $('popup-overlay').classList.remove('active');
+}
 
 function handleFileSelection(e) {
     const f=e.target.files[0]; if (!f) return;

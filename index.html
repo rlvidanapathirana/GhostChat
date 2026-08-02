@@ -29,7 +29,7 @@
         <p class="tag-green">🔒 100% End-to-End Encrypted & Serverless</p>
         <div class="legal-block">
             <p>By continuing, you confirm you are of appropriate age to use chat services.</p>
-            <p class="tag-red" style="margin-top:10px">⚠️ Developers have ZERO liability. No central server means no one — including us — can see your messages.</p>
+            <p class="tag-red" style="margin-top:10px">⚠️ <strong>ABSOLUTE DISCLAIMER OF LIABILITY:</strong> The developer built this purely for privacy (to combat modern data-collecting apps) and holds ZERO liability for any user actions. No legal action whatsoever can be taken against the developer. You are entirely responsible for your communications.</p>
             <p style="margin-top:10px">Do NOT use this for illegal activity.</p>
         </div>
         <button class="btn-primary w100" id="agree-btn"><i class="fa-solid fa-check"></i> I Agree & Continue</button>
@@ -72,6 +72,20 @@
             <p><strong>Want friends to find you via Phone Number?</strong><br>Enter your Phone Number in the "Username" field above.</p>
         </div>
         <button class="btn-primary w100 mt16" id="save-profile-btn"><i class="fa-solid fa-arrow-right"></i> Start Chatting</button>
+    </div>
+</div>
+
+<!-- ══════════════ MODAL: ID TAKEN ══════════════ -->
+<div class="modal-overlay hidden" id="id-taken-modal">
+    <div class="modal-box">
+        <h2 style="color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i> Username Taken</h2>
+        <p style="margin: 15px 0; color: var(--text-muted); font-size: 0.9rem;">
+            The username <strong><span id="taken-id-display"></span></strong> is currently being used by someone else online. Please choose a different one to connect.
+        </p>
+        <div class="field-group">
+            <input type="text" id="new-id-input" placeholder="Enter new Username..." autocapitalize="none">
+        </div>
+        <button class="btn-primary w100 mt16" id="btn-save-new-id"><i class="fa-solid fa-link"></i> Connect</button>
     </div>
 </div>
 
@@ -164,10 +178,11 @@
             <button class="icon-btn" id="close-about-btn"><i class="fa-solid fa-xmark"></i></button>
         </header>
         <i class="fa-solid fa-ghost modal-icon"></i>
-        <h3 style="color:var(--primary); margin-bottom:10px;">Maximum Security</h3>
-        <p class="legal-block" style="text-align:center; margin-top:0;">GhostChat is a 100% serverless P2P messaging application. There is no central server storing your data. All messages and media are sent directly between devices using WebRTC, secured with mandatory End-to-End Encryption (E2EE).</p>
+        <h3 style="color:var(--primary); margin-bottom:10px;">Maximum Security & High Quality</h3>
+        <p class="legal-block" style="text-align:center; margin-top:0;">GhostChat is a 100% serverless P2P messaging application. There is no central database or server storing your data. All messages, <strong>High Quality Audio & Video Calls</strong>, and media are transmitted directly between devices via WebRTC, secured with military-grade <strong>End-to-End Encryption (E2EE)</strong> over DTLS/SRTP.</p>
         <div style="margin:20px 0; font-size:0.85rem;">
             <p>Developed by <a href="https://lakshan.vercel.app/" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:600;">V.P.R. Lakshan Vidanapathirana</a> as a project.</p>
+            <p style="font-weight:bold; margin-top:10px;">Product of 🇱🇰 Sri Lanka</p>
             <p style="color:var(--text-muted); margin-top:5px;" id="copyright-year">© 2026 RL GhostChat · V</p>
         </div>
     </div>
@@ -183,7 +198,8 @@
         <div class="legal-block">
             <p><strong>1. Age Restriction:</strong> You must be 18 years or older to use this service.</p>
             <p style="margin-top:10px;"><strong>2. Illegal Use:</strong> You agree NOT to use GhostChat for any illegal, malicious, or harmful activities.</p>
-            <p style="margin-top:10px;" class="tag-red"><strong>3. Disclaimer of Liability:</strong> GhostChat is a decentralized P2P tool. The developers DO NOT have access to your data, messages, or connections, and hold absolutely ZERO liability or responsibility for any user actions or content transmitted through this software.</p>
+            <p style="margin-top:10px;" class="tag-red"><strong>3. Absolute Disclaimer of Liability:</strong> GhostChat is a decentralized P2P tool created strictly to promote user privacy in an era of data-collecting apps. The developer DOES NOT collect, store, or have access to your data, messages, or connections.</p>
+            <p style="margin-top:5px; font-weight:bold; color:var(--danger)">By using GhostChat, you legally agree that the developer holds ZERO liability for any actions, consequences, or content transmitted through this software. No legal action of any kind can be taken against the developer. The sole responsibility lies entirely with the individual users.</p>
         </div>
     </div>
 </div>
@@ -247,7 +263,10 @@
                 <p id="sv-time" style="color:rgba(255,255,255,0.7); font-size:0.75rem; margin:0;">Time</p>
             </div>
         </div>
-        <button class="icon-btn" id="close-status-viewer" style="color:white; background:rgba(0,0,0,0.3);"><i class="fa-solid fa-xmark"></i></button>
+        <div style="display:flex; gap:10px;">
+            <button class="icon-btn hidden" id="delete-status-btn" style="color:var(--danger); background:rgba(0,0,0,0.3);"><i class="fa-solid fa-trash"></i></button>
+            <button class="icon-btn" id="close-status-viewer" style="color:white; background:rgba(0,0,0,0.3);"><i class="fa-solid fa-xmark"></i></button>
+        </div>
     </div>
     
     <div id="sv-content-area" style="flex:1; display:flex; align-items:center; justify-content:center; width:100%; position:relative;">
@@ -411,43 +430,44 @@
             <button class="icon-btn" id="close-reply-btn"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
+        <!-- Overlay Mask for Popups -->
+        <div class="popup-overlay hidden" id="popup-overlay"></div>
+
+        <!-- Attachment Menu -->
+        <div id="attach-menu" class="attach-menu">
+            <div class="attach-grid">
+                <button class="attach-item" id="attach-doc" style="background:#7f66ff"><i class="fa-solid fa-file"></i><span>Document</span></button>
+                <button class="attach-item" id="attach-cam" style="background:#ff2e74"><i class="fa-solid fa-camera"></i><span>Camera</span></button>
+                <button class="attach-item" id="attach-gal" style="background:#b33dfb"><i class="fa-solid fa-image"></i><span>Gallery</span></button>
+                <button class="attach-item" id="attach-loc" style="background:#10b981"><i class="fa-solid fa-location-dot"></i><span>Location</span></button>
+                <button class="attach-item" id="attach-contact" style="background:#0ea5e9"><i class="fa-solid fa-user"></i><span>Contact</span></button>
+            </div>
+        </div>
+
+        <!-- Emoji & Sticker Popup -->
+        <div id="emoji-sticker-popup" class="emoji-sticker-popup">
+            <div class="es-tabs">
+                <button class="es-tab active" data-tab="emojis">Emojis</button>
+                <button class="es-tab" data-tab="anim-emojis">Anim Emojis</button>
+                <button class="es-tab" data-tab="stickers">Stickers</button>
+            </div>
+            <div class="es-content" id="es-content-emojis">
+                <emoji-picker class="dark"></emoji-picker>
+            </div>
+            <div class="es-content hidden" id="es-content-anim-emojis">
+                <div class="sticker-grid" id="anim-emoji-grid"></div>
+            </div>
+            <div class="es-content hidden" id="es-content-stickers">
+                <div class="sticker-grid" id="sticker-grid"></div>
+            </div>
+        </div>
+
         <!-- Input Area -->
         <footer class="chat-input-area">
-            
-            <!-- Attachment Menu -->
-            <div id="attach-menu" class="attach-menu">
-                <div class="attach-grid">
-                    <button class="attach-item" id="attach-doc" style="background:#7f66ff"><i class="fa-solid fa-file"></i><span>Document</span></button>
-                    <button class="attach-item" id="attach-cam" style="background:#ff2e74"><i class="fa-solid fa-camera"></i><span>Camera</span></button>
-                    <button class="attach-item" id="attach-gal" style="background:#b33dfb"><i class="fa-solid fa-image"></i><span>Gallery</span></button>
-                    <button class="attach-item" id="attach-loc" style="background:#10b981"><i class="fa-solid fa-location-dot"></i><span>Location</span></button>
-                    <button class="attach-item" id="attach-contact" style="background:#0ea5e9"><i class="fa-solid fa-user"></i><span>Contact</span></button>
-                </div>
-            </div>
-
             <button class="circle-btn grey" id="attach-btn"><i class="fa-solid fa-paperclip"></i></button>
             <input type="file" id="file-input" accept="*" hidden>
             <input type="file" id="camera-input" accept="image/*,video/*" capture="environment" hidden>
-            
             <button class="circle-btn grey" id="emoji-btn"><i class="fa-solid fa-face-smile"></i></button>
-            
-            <!-- Emoji & Sticker Popup -->
-            <div id="emoji-sticker-popup" class="emoji-sticker-popup">
-                <div class="es-tabs">
-                    <button class="es-tab active" data-tab="emojis">Emojis</button>
-                    <button class="es-tab" data-tab="anim-emojis">Anim Emojis</button>
-                    <button class="es-tab" data-tab="stickers">Stickers</button>
-                </div>
-                <div class="es-content" id="es-content-emojis">
-                    <emoji-picker class="dark"></emoji-picker>
-                </div>
-                <div class="es-content hidden" id="es-content-anim-emojis">
-                    <div class="sticker-grid" id="anim-emoji-grid"></div>
-                </div>
-                <div class="es-content hidden" id="es-content-stickers">
-                    <div class="sticker-grid" id="sticker-grid"></div>
-                </div>
-            </div>
 
             <div class="input-box">
                 <div id="live-typing-display" class="live-type-display hidden"></div>
