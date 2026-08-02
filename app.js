@@ -510,7 +510,11 @@ function clearUnread(peerId) {
 
 function renderChatList() {
     const list = $('chat-list');
-    const items = Object.entries(contacts).sort((a,b) => (b[1].lastTime||0)-(a[1].lastTime||0));
+    const items = Object.entries(contacts).sort((a,b) => {
+        if (a[1].pinned && !b[1].pinned) return -1;
+        if (!a[1].pinned && b[1].pinned) return 1;
+        return (b[1].lastTime||0)-(a[1].lastTime||0);
+    });
     if (!items.length && !myProfile.isGroup) {
         list.innerHTML = `<li class="empty-state"><i class="fa-solid fa-ghost"></i><p>No conversations yet</p><small>Tap the ✉️ button below to start</small></li>`;
         return;
@@ -566,7 +570,7 @@ function renderChatList() {
             </div>
             <div class="chat-item-body">
                 <div class="chat-item-top">
-                    <span class="chat-item-name">${c.name||peerId}</span>
+                    <span class="chat-item-name">${c.name||peerId} ${c.pinned?'<i class="fa-solid fa-thumbtack" style="font-size:0.7rem;color:var(--primary);margin-left:4px;"></i>':''}</span>
                     <span class="chat-item-time">${time}</span>
                 </div>
                 <div class="chat-item-bottom">
@@ -630,6 +634,11 @@ function showChatContextMenu(e, peerId) {
     e.stopPropagation();
     const pop=$('reaction-popup');
     pop.innerHTML='';
+    const pin = document.createElement('span'); pin.className='r-action';
+    pin.innerHTML = contacts[peerId].pinned ? '<i class="fa-solid fa-thumbtack-slash"></i> Unpin Chat' : '<i class="fa-solid fa-thumbtack"></i> Pin Chat';
+    pin.onclick = () => { contacts[peerId].pinned = !contacts[peerId].pinned; saveContacts(); renderChatList(); pop.classList.add('hidden'); };
+    pop.appendChild(pin);
+
     const d=document.createElement('span'); d.className='r-action del'; d.innerHTML='<i class="fa-solid fa-trash"></i> Delete Chat History';
     d.onclick=async()=>{ 
         if(confirm('Delete chat history for this contact?')) {
@@ -1132,6 +1141,13 @@ function renderMsg(data, align, senderName, peerId) {
     else if (data.type==='image') { const i=document.createElement('img'); i.src=data.content; body.appendChild(i); }
     else if (data.type==='video') { const v=document.createElement('video'); v.src=data.content; v.controls=true; body.appendChild(v); }
     else if (data.type==='audio') { body.appendChild(buildAudioPlayer(data.content)); }
+    else if (data.type==='file') {
+        const a=document.createElement('a'); a.href=data.content; 
+        a.download='GhostChat_File'; a.textContent='📄 Download File (PDF/Doc)'; 
+        a.style.color='var(--primary)'; a.style.textDecoration='underline'; 
+        a.style.display='block'; a.style.padding='10px'; a.style.background='rgba(0,0,0,0.2)'; a.style.borderRadius='8px';
+        body.appendChild(a); 
+    }
     else if (data.type==='sticker') { 
         div.classList.add('sticker');
         const i=document.createElement('img'); i.src=data.content; body.appendChild(i); 
@@ -1164,7 +1180,7 @@ function renderMsg(data, align, senderName, peerId) {
     wrap.scrollTop=wrap.scrollHeight;
 
     if (data.selfDestruct && align==='received') {
-        setTimeout(()=>{ div.innerHTML='<em style="opacity:.4">🚫 Self-destructed</em>'; deleteFromHistory(peerId,data.msgId); },10000);
+        setTimeout(()=>{ div.innerHTML='<em style="opacity:.4">🚫 Self-destructed</em>'; deleteFromHistory(peerId,data.msgId); }, 20000);
     }
 }
 

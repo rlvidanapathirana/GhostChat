@@ -391,8 +391,8 @@ input, textarea, select { font-family: 'Outfit', sans-serif; }
 .es-tabs { display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); }
 .es-tab { flex: 1; padding: 10px; background: transparent; border: none; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; transition: 0.2s; }
 .es-tab.active { color: var(--primary); border-bottom: 2px solid var(--primary); font-weight: bold; }
-.es-content { flex: 1; overflow-y: auto; overflow-x: hidden; }
-emoji-picker { width: 100%; height: 100%; --background: transparent; --border-color: rgba(255,255,255,0.1); --category-icon-color: var(--text-muted); --category-icon-active-color: var(--primary); }
+.es-content { flex: 1; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; }
+emoji-picker { width: 100%; flex: 1; min-height: 250px; --background: transparent; --border-color: rgba(255,255,255,0.1); --category-icon-color: var(--text-muted); --category-icon-active-color: var(--primary); }
 .sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 10px; }
 .sticker-item { width: 100%; aspect-ratio: 1; object-fit: contain; cursor: pointer; transition: transform 0.1s; border-radius: 8px; }
 .sticker-item:hover { transform: scale(1.1); background: rgba(255,255,255,0.1); }
