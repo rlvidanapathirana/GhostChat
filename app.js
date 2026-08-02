@@ -124,6 +124,12 @@ $('chat-header-peer').onclick = () => {
     for (let i=0; i<peerCode.length; i++) { hash = (hash<<5)-hash+peerCode.charCodeAt(i); hash|=0; }
     const code = Math.abs(hash).toString().padStart(12, '0').replace(/(.{4})/g, '$1 ').trim();
     $('encryption-code-display').textContent = code;
+    $('enc-modal-username').textContent = peerCode;
+    $('copy-username-btn').onclick = () => {
+        navigator.clipboard.writeText(peerCode);
+        $('copy-username-btn').innerHTML = '<i class="fa-solid fa-check"></i>';
+        setTimeout(() => $('copy-username-btn').innerHTML = '<i class="fa-solid fa-copy"></i>', 2000);
+    };
     show('encryption-modal');
 };
 $('close-encryption-btn').onclick = () => hide('encryption-modal');
