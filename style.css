@@ -369,6 +369,19 @@ input, textarea, select { font-family: 'Outfit', sans-serif; }
 
 /* Custom Audio Player */
 .custom-audio-player { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 20px; width: 220px; margin-top: 5px; }
+.chat-input-area  { padding: 10px 15px; background: var(--bg-card); display: flex; align-items: flex-end; gap: 10px; border-top: 1px solid rgba(255,255,255,0.05); position: relative; }
+.input-box        { flex: 1; background: var(--bg); border-radius: 20px; padding: 10px 15px; min-height: 44px; display: flex; align-items: center; position: relative; }
+.input-box textarea { width: 100%; border: none; background: transparent; color: white; resize: none; font-size: 1rem; max-height: 110px; font-family: inherit; }
+.input-box textarea:focus { outline: none; }
+
+/* Attachment Menu */
+.attach-menu { position: absolute; bottom: 65px; left: 15px; background: var(--bg-card); border-radius: 16px; padding: 15px; box-shadow: 0 -5px 20px rgba(0,0,0,0.5); width: 280px; z-index: 100; transform: translateY(10px); opacity: 0; pointer-events: none; transition: 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.attach-menu.active { transform: translateY(0); opacity: 1; pointer-events: auto; }
+.attach-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+.attach-item { display: flex; flex-direction: column; align-items: center; gap: 5px; background: transparent; border: none; cursor: pointer; }
+.attach-item i { width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.3rem; margin-bottom: 3px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: transform 0.1s; }
+.attach-item:active i { transform: scale(0.9); }
+.attach-item span { color: var(--text-muted); font-size: 0.75rem; }
 .audio-play-btn { background: var(--primary); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 0.9rem; flex-shrink: 0; }
 .audio-track { flex: 1; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; position: relative; cursor: pointer; }
 .audio-progress { position: absolute; top: 0; left: 0; height: 100%; background: var(--primary); border-radius: 2px; width: 0%; pointer-events: none; }

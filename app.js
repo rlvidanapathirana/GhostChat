@@ -1179,35 +1179,75 @@ function deleteMsgForAll(msgId) {
     deleteFromHistory(currentPeerId,msgId);
 }
 
-// ─── File Attachment ───
-$('attach-btn').onclick=()=>$('file-input').click();
-$('file-input').onchange=e=>{
-    const f=e.target.files[0]; if (!f||Object.keys(connections).length===0) return;
-    if (f.size>50*1024*1024) { alert('Max 50MB'); return; }
+// ─── File Attachment & Menu ───
+$('attach-btn').onclick = (e) => {
+    e.stopPropagation();
+    $('attach-menu').classList.toggle('active');
+};
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#attach-menu') && e.target.closest('#attach-btn') === null) {
+        $('attach-menu').classList.remove('active');
+    }
+});
+
+$('attach-doc').onclick = () => { $('file-input').accept = '*'; $('file-input').click(); $('attach-menu').classList.remove('active'); };
+$('attach-gal').onclick = () => { $('file-input').accept = 'image/*,video/*'; $('file-input').click(); $('attach-menu').classList.remove('active'); };
+$('attach-cam').onclick = () => { $('camera-input').click(); $('attach-menu').classList.remove('active'); };
+
+function handleFileSelection(e) {
+    const f=e.target.files[0]; if (!f) return;
+    if (currentPeerId !== 'GROUP_HOST' && (!connections[currentPeerId] || !connections[currentPeerId].open)) return alert('Not connected!');
+    if (f.size>50*1024*1024) return alert('File too large. Max 50MB.');
+    
     const prog=$('upload-progress'), bar=$('upload-bar');
     prog.classList.remove('hidden'); bar.style.width='0%';
     readFile(f, d=>{
         setTimeout(()=>prog.classList.add('hidden'),600);
-        const type=f.type.startsWith('image/')?'image':f.type.startsWith('video/')?'video':null;
-        if (!type) return;
-        const msgId=uid();
-        const payload={type,content:d,msgId,selfDestruct:settings.selfDestruct,timestamp:Date.now()};
+        let type = 'file';
+        if (f.type.startsWith('image/')) type = 'image';
+        else if (f.type.startsWith('video/')) type = 'video';
+        else if (f.type.startsWith('audio/')) type = 'audio';
         
-        if (currentPeerId === 'GROUP_HOST') {
-            payload.originalSender = myProfile.customId;
-            broadcast(payload);
-        } else {
-            const c = connections[currentPeerId];
-            if (c && c.open) c.send(payload);
-            else { alert('Not connected!'); return; }
-        }
-        
-        renderMsg(payload,'sent','Me',currentPeerId);
-        saveToHistory(currentPeerId,payload,'sent','Me');
-        updateContact(currentPeerId,{lastMsg:`[${type}]`,lastTime:Date.now()}); renderChatList();
+        sendPayload({type, content:d, msgId:uid(), selfDestruct:settings.selfDestruct, timestamp:Date.now()});
     }, p=>{ bar.style.width=p+'%'; });
-    $('file-input').value='';
+    e.target.value='';
+}
+$('file-input').onchange = handleFileSelection;
+$('camera-input').onchange = handleFileSelection;
+
+$('attach-loc').onclick = () => {
+    $('attach-menu').classList.remove('active');
+    if (!navigator.geolocation) return alert('Location not supported by browser.');
+    navigator.geolocation.getCurrentPosition(pos => {
+        const url = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
+        sendPayload({ type:'text', content:`📍 My Location:\n${url}`, msgId:uid(), selfDestruct:settings.selfDestruct, timestamp:Date.now() });
+    }, () => alert('Failed to get location. Please allow permissions.'));
 };
+
+$('attach-contact').onclick = () => {
+    $('attach-menu').classList.remove('active');
+    const friend = prompt("Enter the Username (Custom ID) of the contact you want to share:");
+    if (friend) {
+        const link = window.location.origin + window.location.pathname + '?join=' + friend;
+        sendPayload({ type:'text', content:`👤 Contact Share:\n${friend}\nTap to chat: ${link}`, msgId:uid(), selfDestruct:settings.selfDestruct, timestamp:Date.now() });
+    }
+};
+
+function sendPayload(payload) {
+    if (currentPeerId === 'GROUP_HOST') {
+        payload.originalSender = myProfile.customId;
+        broadcast(payload);
+    } else {
+        const c = connections[currentPeerId];
+        if (c && c.open) c.send(payload);
+        else return alert('Not connected!');
+    }
+    renderMsg(payload,'sent','Me',currentPeerId);
+    saveToHistory(currentPeerId,payload,'sent','Me');
+    const preview = payload.type==='text' ? payload.content.substring(0,40)+'…' : `[${payload.type}]`;
+    updateContact(currentPeerId,{lastMsg:preview,lastTime:Date.now()});
+    renderChatList();
+}
 
 // ─── History (IndexedDB) ───
 async function saveToHistory(peerId, data, align, senderName) {

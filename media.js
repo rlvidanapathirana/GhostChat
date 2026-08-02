@@ -111,6 +111,8 @@ const acceptCallBtn  = document.getElementById('accept-call-btn');
 const btnMute        = document.getElementById('btn-mute');
 const btnCam         = document.getElementById('btn-cam-toggle');
 const btnScreen      = document.getElementById('btn-screenshare');
+const btnFlipCam     = document.getElementById('btn-flip-cam');
+const btnSpeaker     = document.getElementById('btn-speaker');
 
 // Attach header call buttons (chat screen)
 document.getElementById('audio-call-btn').onclick=()=>makeCall(currentPeerId,'audio');
@@ -221,4 +223,65 @@ btnScreen.onclick=async()=>{
             btnScreen.classList.remove('active');
         };
     } catch(e) { console.warn('Screen share cancelled'); }
+};
+
+// Flip Camera (Front/Back)
+let currentFacingMode = 'user';
+btnFlipCam.onclick = async () => {
+    if (!currentCall || !localStream) return;
+    try {
+        currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+        const newStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: { exact: currentFacingMode } }, 
+            audio: false 
+        });
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        
+        // Stop old video track
+        localStream.getVideoTracks().forEach(t => t.stop());
+        localStream.removeTrack(localStream.getVideoTracks()[0]);
+        localStream.addTrack(newVideoTrack);
+        
+        // Replace in PeerConnection
+        const sender = currentCall.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(newVideoTrack);
+        
+        localVideo.srcObject = localStream;
+    } catch (err) {
+        console.warn('Cannot switch camera. Falling back...', err);
+        currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+        alert('Camera switch not supported on this device.');
+    }
+};
+
+// Speaker Toggle (Earpiece vs Loudspeaker)
+let usingLoudspeaker = true;
+btnSpeaker.onclick = async () => {
+    if (typeof remoteVideo.setSinkId !== 'function') {
+        alert('Speaker switching is not supported by your browser (Requires Chrome/Android).');
+        return;
+    }
+    
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+        if (audioOutputs.length < 2) {
+            alert('Only one audio output device found.');
+            return;
+        }
+        
+        // Very basic toggle logic, picking next device. 
+        // Mobile Chrome usually exposes 'default' (earpiece) and 'speaker' (loudspeaker).
+        usingLoudspeaker = !usingLoudspeaker;
+        const targetLabel = usingLoudspeaker ? 'speaker' : 'default'; // heuristic
+        
+        let targetDevice = audioOutputs.find(d => d.label.toLowerCase().includes(targetLabel));
+        if (!targetDevice) targetDevice = audioOutputs[usingLoudspeaker ? 1 : 0]; // fallback
+        
+        await remoteVideo.setSinkId(targetDevice.deviceId);
+        btnSpeaker.classList.toggle('active', !usingLoudspeaker); // active when earpiece (muted speaker icon effect)
+        sysMsg(`Audio routed to ${usingLoudspeaker ? 'Loudspeaker' : 'Earpiece'}`);
+    } catch (err) {
+        console.error('Error switching speaker:', err);
+    }
 };

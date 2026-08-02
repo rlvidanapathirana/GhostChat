@@ -412,8 +412,21 @@
 
         <!-- Input Area -->
         <footer class="chat-input-area">
+            
+            <!-- Attachment Menu -->
+            <div id="attach-menu" class="attach-menu hidden">
+                <div class="attach-grid">
+                    <button class="attach-item" id="attach-doc" style="background:#7f66ff"><i class="fa-solid fa-file"></i><span>Document</span></button>
+                    <button class="attach-item" id="attach-cam" style="background:#ff2e74"><i class="fa-solid fa-camera"></i><span>Camera</span></button>
+                    <button class="attach-item" id="attach-gal" style="background:#b33dfb"><i class="fa-solid fa-image"></i><span>Gallery</span></button>
+                    <button class="attach-item" id="attach-loc" style="background:#10b981"><i class="fa-solid fa-location-dot"></i><span>Location</span></button>
+                    <button class="attach-item" id="attach-contact" style="background:#0ea5e9"><i class="fa-solid fa-user"></i><span>Contact</span></button>
+                </div>
+            </div>
+
             <button class="circle-btn grey" id="attach-btn"><i class="fa-solid fa-paperclip"></i></button>
-            <input type="file" id="file-input" accept="image/*,video/*" hidden>
+            <input type="file" id="file-input" accept="*" hidden>
+            <input type="file" id="camera-input" accept="image/*,video/*" capture="environment" hidden>
             <div class="input-box">
                 <div id="live-typing-display" class="live-type-display hidden"></div>
                 <textarea id="message-input" placeholder="Message..." rows="1" autocomplete="off"></textarea>
@@ -446,6 +459,8 @@
     <div class="call-controls-bar">
         <button class="call-ctrl-btn" id="btn-mute"><i class="fa-solid fa-microphone"></i></button>
         <button class="call-ctrl-btn" id="btn-cam-toggle"><i class="fa-solid fa-video"></i></button>
+        <button class="call-ctrl-btn" id="btn-flip-cam"><i class="fa-solid fa-camera-rotate"></i></button>
+        <button class="call-ctrl-btn" id="btn-speaker"><i class="fa-solid fa-volume-high"></i></button>
         <button class="call-ctrl-btn" id="btn-screenshare"><i class="fa-solid fa-desktop"></i></button>
         <button class="call-ctrl-btn danger" id="end-call-btn"><i class="fa-solid fa-phone-slash"></i></button>
         <button class="call-ctrl-btn success hidden" id="accept-call-btn"><i class="fa-solid fa-phone"></i></button>
