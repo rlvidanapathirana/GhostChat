@@ -48,6 +48,14 @@ async function startRec(e) {
             cancelAnimationFrame(animFrame);
             voiceCanvas.classList.add('hidden');
             audioCtx?.close();
+            stream.getTracks().forEach(t=>t.stop());
+            
+            if (cancelRecording) {
+                audioChunks = [];
+                cancelRecording = false;
+                return;
+            }
+            
             const blob=new Blob(audioChunks,{type:'audio/webm'});
             const r=new FileReader();
             r.onload=ev=>{
@@ -60,13 +68,24 @@ async function startRec(e) {
                 renderChatList();
             };
             r.readAsDataURL(blob);
-            stream.getTracks().forEach(t=>t.stop());
         };
         mediaRecorder.start();
         isRecording=true;
         voiceBtn.classList.add('recording');
+        document.getElementById('voice-cancel-btn').classList.remove('hidden');
     } catch(err) { alert('Microphone access required.'); }
 }
+
+let cancelRecording = false;
+
+document.getElementById('voice-cancel-btn').onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isRecording) {
+        cancelRecording = true;
+        stopRec(e);
+    }
+};
 
 function stopRec(e) {
     e.preventDefault();
@@ -74,6 +93,7 @@ function stopRec(e) {
         mediaRecorder.stop();
         isRecording=false;
         voiceBtn.classList.remove('recording');
+        document.getElementById('voice-cancel-btn').classList.add('hidden');
     }
 }
 

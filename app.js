@@ -62,7 +62,7 @@ $('save-profile-btn').onclick = async () => {
     const status=$('setup-status').value.trim() || myProfile.status;
     if (!name || !id) { showErr('setup-err','Fill in all fields.'); return; }
     if (!myProfile.avatar) myProfile.avatar = defaultAvatar();
-    myProfile = { ...myProfile, name, customId:id, status };
+    myProfile = { ...myProfile, name, customId:id, status, isGroup: false, groupMembers: [] };
     localStorage.setItem('gc_profile', JSON.stringify(myProfile));
     hide('profile-modal');
     applyProfileUI();
@@ -161,11 +161,20 @@ function startPeer() {
     peer.on('open', () => console.log('Peer ready:', myProfile.customId));
     peer.on('error', err => {
         if (err.type === 'unavailable-id') {
-            show('profile-modal');
-            showErr('setup-err',`"${myProfile.customId}" is taken. Choose another.`);
+            if (myProfile.isGroup) {
+                sysMsg('Group ID taken, please try another name.');
+                myProfile.isGroup = false;
+                localStorage.setItem('gc_profile', JSON.stringify(myProfile));
+                startPeer();
+            } else {
+                show('profile-modal');
+                showErr('setup-err',`"${myProfile.customId}" is taken. Choose another.`);
+            }
         }
     });
-    peer.on('connection', conn => { isHost = true; setupConn(conn); });
+    peer.on('connection', conn => { 
+        setupConn(conn); 
+    });
     peer.on('call', handleIncomingCall);
 }
 
@@ -183,13 +192,56 @@ function setupConn(conn) {
     conn.on('data', d => handleData(d, conn.peer));
     conn.on('close', () => {
         delete connections[conn.peer];
+        const peerProfile = peerProfiles[conn.peer];
+        
         if (currentPeerId === conn.peer) {
             safeSet('chat-peer-status', el => { el.textContent='Offline'; el.className='peer-sub-text offline'; });
             safeSet('chat-online-dot', el => el.classList.add('hidden'));
         }
-        sysMsg(`${peerProfiles[conn.peer]?.name || conn.peer} disconnected`);
+        sysMsg(`${peerProfile?.name || conn.peer} disconnected`);
         updateContactStatus(conn.peer, false);
         renderChatList();
+        
+        // --- HOST MIGRATION LOGIC ---
+        if (peerProfile?.isGroup) {
+            sysMsg(`Group Host disconnected! Initiating Host Migration...`);
+            // Determine new host
+            const members = peerProfile.groupMembers || [];
+            // Remove the dead host from the pool
+            const activePool = members.filter(m => m !== conn.peer);
+            activePool.push(myProfile.customId); // Ensure we are in the pool
+            
+            // Sort deterministically to find next host
+            activePool.sort();
+            const newHostId = activePool[0];
+            
+            if (newHostId === myProfile.customId) {
+                // I am the new Host!
+                sysMsg(`You are the new Group Host!`);
+                myProfile.isGroup = true;
+                myProfile.groupName = peerProfile.groupName || 'Recovered Group';
+                myProfile.groupMembers = activePool;
+                
+                // Keep my current ID but start accepting everyone
+                // Wait, if I am the new host, my ID is already my customId. 
+                // Others will connect to me.
+                broadcast({ type: 'profile-sync', profile: myProfile });
+            } else {
+                // Someone else is the host, connect to them
+                sysMsg(`Connecting to new Host: ${newHostId}`);
+                setTimeout(() => {
+                    if (!connections[newHostId]?.open) {
+                        const newConn = peer.connect(newHostId, { reliable:true });
+                        setupConn(newConn);
+                    }
+                }, 2000);
+            }
+        } else if (myProfile.isGroup) {
+            // We are the host and a member left. Sync updated member list.
+            myProfile.groupMembers = Object.keys(connections).filter(k => connections[k].open);
+            myProfile.groupMembers.push(myProfile.customId);
+            broadcast({ type: 'profile-sync', profile: myProfile });
+        }
     });
     conn.on('error', err => {
         console.warn('Connection error:', err);
@@ -197,7 +249,29 @@ function setupConn(conn) {
     });
 }
 
-// ─── New Chat ───
+// ─── Create Group ───
+$('new-group-fab').onclick = () => show('newgroup-modal');
+$('close-newgroup-modal').onclick = () => hide('newgroup-modal');
+$('create-group-btn').onclick = () => {
+    const name = $('newgroup-name-input').value.trim();
+    if (!name) return;
+    hide('newgroup-modal');
+    $('newgroup-name-input').value = '';
+    
+    // Convert current session to a Group Host session
+    const groupId = 'grp_' + name.toLowerCase().replace(/[^a-z0-9_]/g,'') + '_' + uid().substring(0,4);
+    
+    myProfile.isGroup = true;
+    myProfile.groupName = name;
+    myProfile.customId = groupId;
+    myProfile.groupMembers = [groupId];
+    localStorage.setItem('gc_profile', JSON.stringify(myProfile));
+    
+    sysMsg(`Group created! Your Group ID is: ${groupId}`);
+    startPeer();
+};
+
+// ─── New Chat / Join ───
 $('new-chat-fab').onclick = () => show('newchat-modal');
 $('close-newchat-modal').onclick = () => hide('newchat-modal');
 $('newchat-connect-btn').onclick = () => {
@@ -221,14 +295,24 @@ $('newchat-connect-btn').onclick = () => {
 function handleData(data, from) {
     if (data.type === 'profile-sync') {
         peerProfiles[from] = data.profile;
-        if (!isHost) connections[from]?.send({ type:'profile-sync', profile:myProfile });
+        if (!myProfile.isGroup) connections[from]?.send({ type:'profile-sync', profile:myProfile });
+        
+        // If we are a group host, a new member joined. Broadcast updated member list.
+        if (myProfile.isGroup) {
+            myProfile.groupMembers = Object.keys(connections).filter(k => connections[k].open);
+            myProfile.groupMembers.push(myProfile.customId);
+            broadcast({ type: 'profile-sync', profile: myProfile });
+        }
+
         // Update contact
+        const dName = data.profile.isGroup ? `[Group] ${data.profile.groupName}` : data.profile.name;
+        
         updateContact(from, {
-            name: data.profile.name, avatar: data.profile.avatar,
+            name: dName, avatar: data.profile.avatar,
             status: data.profile.status, online: true
         });
         if (currentPeerId === from) updateChatHeader(from);
-        updatePeerStatus(from, data.profile.status);
+        updatePeerStatus(from, data.profile.isGroup ? `${data.profile.groupMembers?.length||1} members` : data.profile.status);
         renderChatList();
         
         // Also send our stories to them
@@ -273,12 +357,20 @@ function handleData(data, from) {
     if (data.type === 'system') { sysMsg(data.content); return; }
 
     // Message
-    const senderName = peerProfiles[from]?.name || from;
+    // If the message came from a Group Host, they might be forwarding it. Use originalSender if available.
+    const actualSenderId = data.originalSender || from;
+    const senderName = peerProfiles[actualSenderId]?.name || actualSenderId;
+    
     renderMsg(data, 'received', senderName, from);
     $('sound-msg-in').currentTime=0; $('sound-msg-in').play().catch(()=>{});
     if (document.hidden) document.title = '🔔 New Message – GhostChat';
     if (data.msgId) connections[from]?.send({ type:'read-receipt', msgId:data.msgId });
-    if (isHost && data.type !== 'system') broadcast(data, from);
+    
+    // Group Routing: If I am the Host, forward this to everyone else
+    if (myProfile.isGroup && data.type !== 'system') {
+        data.originalSender = actualSenderId; // Keep original sender
+        broadcast(data, from); // Exclude the person who sent it to us
+    }
 
     // Update contact
     const preview = data.type==='text' ? data.content : `[${data.type}]`;

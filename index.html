@@ -63,19 +63,37 @@
     </div>
 </div>
 
-<!-- ══════════════ MODAL: NEW CHAT ══════════════ -->
+<!-- ══════════════ MODAL: NEW CHAT / JOIN GROUP ══════════════ -->
 <div class="modal-overlay hidden" id="newchat-modal">
     <div class="modal-box">
         <header class="modal-header">
-            <h2>New Chat</h2>
+            <h2 id="newchat-title">New Chat</h2>
             <button class="icon-btn" id="close-newchat-modal"><i class="fa-solid fa-xmark"></i></button>
         </header>
         <div class="field-group">
-            <label>Connect to Username</label>
+            <label id="newchat-label">Connect to Username or Group ID</label>
             <input type="text" id="newchat-peer-input" placeholder="e.g. nimal77" autocapitalize="none" autocorrect="off">
         </div>
         <p id="newchat-err" class="err-msg hidden"></p>
-        <button class="btn-primary w100 mt16" id="newchat-connect-btn"><i class="fa-solid fa-link"></i> Connect & Chat</button>
+        <button class="btn-primary w100 mt16" id="newchat-connect-btn"><i class="fa-solid fa-link"></i> Connect</button>
+    </div>
+</div>
+
+<!-- ══════════════ MODAL: CREATE GROUP ══════════════ -->
+<div class="modal-overlay hidden" id="newgroup-modal">
+    <div class="modal-box">
+        <header class="modal-header">
+            <h2>Create Group Lobby</h2>
+            <button class="icon-btn" id="close-newgroup-modal"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <div class="field-group">
+            <label>Group Name</label>
+            <input type="text" id="newgroup-name-input" placeholder="e.g. Gamers Squad">
+        </div>
+        <div class="legal-block mt12" style="font-size:0.85rem;">
+            <p><strong>You are the Host.</strong> If you go offline, another member will automatically become the Host.</p>
+        </div>
+        <button class="btn-primary w100 mt16" id="create-group-btn"><i class="fa-solid fa-users"></i> Create Lobby</button>
     </div>
 </div>
 
@@ -273,7 +291,10 @@
                     <small>Tap the button below to start a new chat</small>
                 </li>
             </ul>
-            <button class="fab" id="new-chat-fab"><i class="fa-solid fa-message"></i></button>
+            <div style="position:fixed; bottom:90px; right:20px; display:flex; flex-direction:column; gap:10px;">
+                <button class="fab" id="new-group-fab" style="background:var(--secondary);"><i class="fa-solid fa-users"></i></button>
+                <button class="fab" id="new-chat-fab"><i class="fa-solid fa-message"></i></button>
+            </div>
         </div>
 
         <!-- ── TAB: STATUS ── -->
@@ -380,7 +401,8 @@
             <div class="upload-progress hidden" id="upload-progress">
                 <div class="upload-bar" id="upload-bar"></div>
             </div>
-            <div class="voice-wrap">
+            <div class="voice-wrap" style="display:flex; align-items:center; gap:5px;">
+                <button class="circle-btn danger hidden" id="voice-cancel-btn" style="background:var(--danger);"><i class="fa-solid fa-trash"></i></button>
                 <canvas id="voice-canvas" class="hidden" width="160" height="40"></canvas>
                 <button class="circle-btn grey" id="voice-btn"><i class="fa-solid fa-microphone"></i></button>
             </div>
